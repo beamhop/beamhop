@@ -1,6 +1,15 @@
-# beamhop
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/beamhop/beamhop/main/assets/beamhop-icon-dark.png">
+    <img alt="beamhop" src="https://raw.githubusercontent.com/beamhop/beamhop/main/assets/beamhop-icon-light.png" width="160">
+  </picture>
+</p>
 
-The beamhop monorepo. Sandboxed builds and remote-shell primitives.
+<h1 align="center">beamhop</h1>
+
+<p align="center">
+  The beamhop monorepo. Sandboxed builds and remote-shell primitives.
+</p>
 
 ## Packages
 

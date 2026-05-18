@@ -13,7 +13,11 @@ export default defineConfig({
       title: "beamhop",
       description:
         "Sandboxed builds and remote-shell primitives. One repo, two product lines.",
-      logo: { src: "./src/assets/logo.svg", replacesTitle: false },
+      logo: {
+        dark: "./src/assets/beamhop-icon-dark.png",
+        light: "./src/assets/beamhop-icon-light.png",
+        replacesTitle: false,
+      },
       social: [
         {
           icon: "github",
