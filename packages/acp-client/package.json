@@ -1,0 +1,36 @@
+{
+  "name": "@beamhop/acp-client",
+  "version": "0.0.0",
+  "description": "Browser SDK that drives an @beamhop/acp-server gateway over WebSocket. Typed events, automatic reconnect, framework-agnostic.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beamhop/beamhop.git",
+    "directory": "packages/acp-client"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap --external '@beamhop/acp-protocol' && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "bun test",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@beamhop/acp-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

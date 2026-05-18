@@ -10,8 +10,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "bun --filter @beamhop/shell-protocol build && bun --filter './packages/*' build",
-    "typecheck": "bun --filter @beamhop/shell-protocol build && bun --filter './packages/*' typecheck",
+    "build": "bun --filter @beamhop/shell-protocol build && bun --filter @beamhop/acp-protocol build && bun --filter './packages/*' build",
+    "typecheck": "bun --filter @beamhop/shell-protocol build && bun --filter @beamhop/acp-protocol build && bun --filter './packages/*' typecheck",
     "test": "bun --filter './packages/*' test",
     "clean": "bun --filter './packages/*' clean && rm -rf node_modules",
     "format": "prettier --write .",

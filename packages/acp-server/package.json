@@ -1,0 +1,79 @@
+{
+  "name": "@beamhop/acp-server",
+  "version": "0.0.0",
+  "description": "Server-side gateway that spawns ACP coding-agent CLIs and bridges them to browsers over WebSocket. Framework-agnostic core with thin Hono / Bun / Node / Express / standalone adapters.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beamhop/beamhop.git",
+    "directory": "packages/acp-server"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./hono": {
+      "types": "./dist/adapters/hono.d.ts",
+      "import": "./dist/adapters/hono.js"
+    },
+    "./bun": {
+      "types": "./dist/adapters/bun.d.ts",
+      "import": "./dist/adapters/bun.js"
+    },
+    "./node": {
+      "types": "./dist/adapters/node.d.ts",
+      "import": "./dist/adapters/node.js"
+    },
+    "./express": {
+      "types": "./dist/adapters/express.d.ts",
+      "import": "./dist/adapters/express.js"
+    },
+    "./standalone": {
+      "types": "./dist/adapters/standalone.d.ts",
+      "import": "./dist/adapters/standalone.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts ./src/adapters/hono.ts ./src/adapters/bun.ts ./src/adapters/node.ts ./src/adapters/express.ts ./src/adapters/standalone.ts --outdir ./dist --target node --format esm --sourcemap --splitting --external 'ws' --external 'node-pty' --external '@zed-industries/agent-client-protocol' --external '@beamhop/acp-protocol' --external 'hono' --external 'express' && bun build ./src/index.ts --outdir ./dist --target node --format cjs --sourcemap --entry-naming '[dir]/[name].cjs' --external 'ws' --external 'node-pty' --external '@zed-industries/agent-client-protocol' --external '@beamhop/acp-protocol' && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "bun test",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@beamhop/acp-protocol": "workspace:*",
+    "@zed-industries/agent-client-protocol": "^0.4.5",
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "hono": "^4.0.0",
+    "express": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "hono": { "optional": true },
+    "express": { "optional": true }
+  },
+  "optionalDependencies": {
+    "node-pty": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.12",
+    "@types/express": "^4.17.21",
+    "hono": "^4.0.0",
+    "express": "^4.0.0"
+  },
+  "engines": {
+    "bun": ">=1.2.0",
+    "node": ">=22"
+  }
+}

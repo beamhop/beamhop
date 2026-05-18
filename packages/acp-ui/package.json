@@ -1,0 +1,31 @@
+{
+  "name": "@beamhop/acp-ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Internal React hooks and components for driving @beamhop/acp-client. Consumed by the in-repo app; not published.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./hooks": "./src/hooks/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "echo '(no tests yet)'",
+    "build": "echo '(internal package — consumed as source by the in-repo app)'",
+    "clean": "rm -rf *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@beamhop/acp-client": "workspace:*",
+    "@beamhop/acp-protocol": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0"
+  }
+}
