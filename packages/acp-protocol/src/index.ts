@@ -11,6 +11,12 @@ import type { AuthMethod } from "@zed-industries/agent-client-protocol";
 
 export const PROTOCOL_VERSION = 1;
 
+/**
+ * Single trystero action namespace used to carry every ACP envelope across a
+ * P2P room. Lives in acp-protocol so the peer and host packages can't drift.
+ */
+export const ACP_ROOM_ACTION = "acp" as const;
+
 // ---------- Agent identity ----------
 
 /**

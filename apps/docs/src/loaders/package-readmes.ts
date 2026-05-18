@@ -6,7 +6,7 @@ import type { Loader, LoaderContext } from "astro/loaders";
 type PackageManifest = {
   slug: string;
   npm: string;
-  group: "beambox" | "shell";
+  group: "beambox" | "shell" | "acp";
   order: number;
 };
 
@@ -16,6 +16,11 @@ const PACKAGES: PackageManifest[] = [
   { slug: "shell-client",   npm: "@beamhop/shell-client",   group: "shell",   order: 3 },
   { slug: "shell-server",   npm: "@beamhop/shell-server",   group: "shell",   order: 4 },
   { slug: "shell-relay",    npm: "@beamhop/shell-relay",    group: "shell",   order: 5 },
+  { slug: "acp-protocol",   npm: "@beamhop/acp-protocol",   group: "acp",     order: 6 },
+  { slug: "acp-server",     npm: "@beamhop/acp-server",     group: "acp",     order: 7 },
+  { slug: "acp-client",     npm: "@beamhop/acp-client",     group: "acp",     order: 8 },
+  { slug: "acp-p2p",        npm: "@beamhop/acp-p2p",        group: "acp",     order: 9 },
+  { slug: "acp-relay",      npm: "@beamhop/acp-relay",      group: "acp",     order: 10 },
 ];
 
 // Repo root, resolved relative to this file: apps/docs/src/loaders/ → ../../../..

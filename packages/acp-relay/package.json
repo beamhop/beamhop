@@ -1,7 +1,7 @@
 {
   "name": "@beamhop/acp-relay",
   "version": "0.0.0",
-  "description": "WebSocket fallback transport for @beamhop/acp-p2p-{server,client}. Exposes a trystero-compatible joinRoom backed by a tiny relay server, plus a withFallback() wrapper that switches from WebRTC to the relay on timeout.",
+  "description": "WebSocket fallback transport for @beamhop/acp-p2p. Exposes a trystero-compatible joinRoom backed by a tiny relay server, plus a withFallback() wrapper that switches from WebRTC to the relay on timeout.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -52,8 +52,7 @@
     "@trystero-p2p/core": "^0.24.0"
   },
   "devDependencies": {
-    "@beamhop/acp-p2p-client": "workspace:*",
-    "@beamhop/acp-p2p-server": "workspace:*",
+    "@beamhop/acp-p2p": "workspace:*",
     "@trystero-p2p/core": "^0.24.0",
     "@types/bun": "latest",
     "@types/node": "^22.0.0",

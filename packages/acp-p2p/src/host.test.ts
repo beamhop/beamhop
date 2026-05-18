@@ -12,7 +12,7 @@ import path from "node:path";
 import { decode, encode, PROTOCOL_VERSION, type WireMessage } from "@beamhop/acp-protocol";
 import { defineAgent } from "@beamhop/acp-server";
 import { FakeNetwork, fakeJoinRoom } from "./__fixtures__/fake-room.js";
-import { createAcpP2PHost, type AcpP2PHost } from "./index.js";
+import { createAcpP2PHost, type AcpP2PHost } from "./host.js";
 
 // Resolve the fake-agent fixture from the sibling acp-server package.
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -55,10 +55,6 @@ interface RawPeer {
   ): Promise<Extract<WireMessage, { kind: K }>>;
 }
 
-/**
- * Lightweight peer driver: skips the connectAcpP2P wrapper so the test can
- * assert directly on the wire frames and prove the gateway/room semantics.
- */
 function makePeer(network: FakeNetwork): RawPeer {
   const room = network.spawn();
   const inbox: WireMessage[] = [];
@@ -100,7 +96,6 @@ function makePeer(network: FakeNetwork): RawPeer {
       predicate?: (m: Extract<WireMessage, { kind: K }>) => boolean,
       timeoutMs = 5000,
     ) {
-      // Check inbox for already-received matching frame.
       for (const m of inbox) {
         if (m.kind === kind && (!predicate || predicate(m as Extract<WireMessage, { kind: K }>))) {
           return Promise.resolve(m as Extract<WireMessage, { kind: K }>);
@@ -142,9 +137,6 @@ describe("createAcpP2PHost end-to-end", () => {
     const a = makePeer(network);
     const b = makePeer(network);
 
-    // Peer A sends hello → host spawns agent → both peers receive ready
-    // (A via the gateway broadcast, B via the cached replay on join — though
-    // in this case A and B joined before hello, so both see the broadcast).
     await a.send({
       kind: "hello",
       protocolVersion: PROTOCOL_VERSION,
@@ -158,8 +150,6 @@ describe("createAcpP2PHost end-to-end", () => {
     expect(readyB.payload.agentId).toBe("fake-normal");
     expect(readyA.payload.sessionId).toBe(readyB.payload.sessionId);
 
-    // Peer A issues a prompt; both peers see the session/update notify,
-    // but only A's rpc-result id matches its outgoing id.
     await a.send({
       kind: "rpc",
       payload: {
@@ -183,9 +173,6 @@ describe("createAcpP2PHost end-to-end", () => {
     const resultA = await a.waitFor("rpc-result", (m) => m.payload.id === "a-prompt-1");
     expect((resultA.payload.result as { stopReason: string }).stopReason).toBe("end_turn");
 
-    // Peer B also received the result frame (broadcast), but it doesn't
-    // match any inflight id of B's, which in real connectAcpP2P would be
-    // silently ignored.
     const sawResult = b.inbox.some(
       (m) => m.kind === "rpc-result" && m.payload.id === "a-prompt-1",
     );
@@ -218,7 +205,6 @@ describe("createAcpP2PHost end-to-end", () => {
     const readyFirst = await first.waitFor("ready");
     const originalSessionId = readyFirst.payload.sessionId;
 
-    // Late peer joins AFTER ready has been broadcast and cached.
     const late = makePeer(network);
     const readyLate = await late.waitFor("ready");
     expect(readyLate.payload.sessionId).toBe(originalSessionId);

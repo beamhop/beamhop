@@ -1,16 +1,20 @@
 export {
   connectAcp,
-  MissingHandlerError,
   type AcpAuth,
+  type ConnectAcpOptions,
+} from "./connect.js";
+export {
+  MissingHandlerError,
+  Session,
   type AcpClientHandlers,
   type AcpSession,
-  type ConnectAcpOptions,
   type LoginExitInfo,
   type LoginStream,
   type PromptInput,
   type PromptOptions,
   type PromptStream,
-} from "./connection.js";
+  type SessionOptions,
+} from "./session.js";
 export {
   TypedEmitter,
   type SessionEvents,
@@ -21,6 +25,14 @@ export {
   type ReconnectOptions,
   type ReconnectPolicy,
 } from "./reconnect.js";
+export {
+  WsTransport,
+  type WsTransportOptions,
+} from "./transport-ws.js";
+export {
+  type Transport,
+  type TransportCapabilities,
+} from "./transport.js";
 
 // Re-export the protocol types the consumer is likely to touch so they don't
 // need a second `@beamhop/acp-protocol` install.
@@ -28,6 +40,7 @@ export {
   PROTOCOL_VERSION,
   BUILT_IN_AGENT_IDS,
   CLOSE_CODES,
+  ACP_ROOM_ACTION,
   type AgentDescriptor,
   type AgentId,
   type AgentLoginKind,

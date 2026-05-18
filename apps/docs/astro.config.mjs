@@ -12,7 +12,7 @@ export default defineConfig({
     starlight({
       title: "beamhop",
       description:
-        "Sandboxed builds and remote-shell primitives. One repo, two product lines.",
+        "Sandboxed builds, remote-shell primitives, and a browser-to-coding-agent bridge.",
       logo: {
         dark: "./src/assets/beamhop-icon-dark.png",
         light: "./src/assets/beamhop-icon-light.png",
@@ -46,6 +46,17 @@ export default defineConfig({
             { label: "shell-client", link: "/packages/shell-client/" },
             { label: "shell-server", link: "/packages/shell-server/" },
             { label: "shell-relay", link: "/packages/shell-relay/" },
+          ],
+        },
+        {
+          label: "ACP suite",
+          items: [
+            { label: "How it fits together", link: "/acp/" },
+            { label: "acp-protocol", link: "/packages/acp-protocol/" },
+            { label: "acp-server", link: "/packages/acp-server/" },
+            { label: "acp-client", link: "/packages/acp-client/" },
+            { label: "acp-p2p", link: "/packages/acp-p2p/" },
+            { label: "acp-relay", link: "/packages/acp-relay/" },
           ],
         },
       ],

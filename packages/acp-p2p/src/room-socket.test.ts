@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { encode } from "@beamhop/acp-protocol";
 import { FakeNetwork } from "./__fixtures__/fake-room.js";
-import { createRoomSocket } from "./room-socket.js";
+import { createRoomSocket } from "./host.js";
 
 const microtaskDrain = () => new Promise<void>((r) => queueMicrotask(r));
 
@@ -64,7 +64,6 @@ describe("createRoomSocket", () => {
       payload: { level: "info", message: "noise", ts: Date.now() },
     });
 
-    // Existing peer that should NOT receive the replay.
     const earlyPeer = net.spawn();
     const [, earlyRecv] = earlyPeer.makeAction<string>("acp");
     const earlyGot: string[] = [];
@@ -74,7 +73,6 @@ describe("createRoomSocket", () => {
     socket.send(otherFrame);
     await microtaskDrain();
 
-    // Late joiner — should get the replayed ready, nothing else.
     const lateGot: string[] = [];
     const latePeer = net.spawn();
     const [, lateRecv] = latePeer.makeAction<string>("acp");
@@ -82,10 +80,8 @@ describe("createRoomSocket", () => {
     await microtaskDrain();
     await microtaskDrain();
 
-    // Early peer saw both the original broadcasts.
     expect(earlyGot).toContain(readyFrame);
     expect(earlyGot).toContain(otherFrame);
-    // Late peer only saw the ready replay (targeted to it), not the log.
     expect(lateGot).toEqual([readyFrame]);
   });
 

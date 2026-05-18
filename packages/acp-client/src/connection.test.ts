@@ -6,7 +6,7 @@ import {
   encode,
   type WireMessage,
 } from "@beamhop/acp-protocol";
-import { MissingHandlerError, connectAcp, type AcpSession } from "./connection.js";
+import { MissingHandlerError, connectAcp, type AcpSession } from "./index.js";
 import { MockWebSocket } from "./fake-ws.js";
 
 // Default handlers — minimal, just satisfies the `onPermissionRequest` contract.

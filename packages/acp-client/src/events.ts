@@ -108,4 +108,12 @@ export interface SessionEvents extends EventMap {
    * observability hook — most consumers should use `useAgentLogin` instead.
    */
   login_data: { loginId: string; data: string };
+  /**
+   * P2P transports only: a peer joined the room. The Session emits these
+   * when the trystero room reports presence. Single-producer transports
+   * (WebSocket) never emit these.
+   */
+  peer_join: { peerId: string };
+  /** P2P transports only: a peer left the room. */
+  peer_leave: { peerId: string };
 }

@@ -1,9 +1,9 @@
 ---
 title: beamhop
-description: Sandboxed builds and remote-shell primitives. One repo, two product lines.
+description: Sandboxed builds, remote-shell primitives, and a browser-to-coding-agent bridge.
 template: splash
 hero:
-  tagline: Sandboxed builds and remote-shell primitives. One repo, two product lines.
+  tagline: Sandboxed builds, remote-shell primitives, and a browser-to-coding-agent bridge.
   image:
     dark: ../../assets/beamhop-icon-dark.png
     light: ../../assets/beamhop-icon-light.png
@@ -17,6 +17,10 @@ hero:
       link: /beamhop/shell/
       icon: right-arrow
       variant: secondary
+    - text: Explore the ACP suite
+      link: /beamhop/acp/
+      icon: right-arrow
+      variant: secondary
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
@@ -27,6 +31,9 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   </Card>
   <Card title="Shell suite" icon="seti:powershell">
     Expose a local shell to browsers over WebSocket or P2P (WebRTC). Four packages that fit together: [protocol](/beamhop/packages/shell-protocol/), [client](/beamhop/packages/shell-client/), [server](/beamhop/packages/shell-server/), [relay](/beamhop/packages/shell-relay/).
+  </Card>
+  <Card title="ACP suite" icon="seti:typescript">
+    Bridge a browser UI to an ACP-compatible coding-agent CLI (Claude Code, Gemini, Codex…). Five packages, two transports — [WebSocket](/beamhop/packages/acp-server/) or [WebRTC P2P](/beamhop/packages/acp-p2p/). → [How it fits together](/beamhop/acp/)
   </Card>
 </CardGrid>
 

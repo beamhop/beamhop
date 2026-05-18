@@ -8,18 +8,36 @@
 <h1 align="center">beamhop</h1>
 
 <p align="center">
-  The beamhop monorepo. Sandboxed builds and remote-shell primitives.
+  The beamhop monorepo. Sandboxed builds, remote-shell primitives, and a
+  browser-to-coding-agent bridge.
 </p>
 
 ## Packages
 
+**Beambox** — sandboxed image builds.
+
 | Package | What it does |
 |---|---|
 | [`@beamhop/beambox`](packages/beambox)               | Dockerfile-style image builds on top of microsandbox. Produces reusable snapshots, not OCI tarballs. |
+
+**Shell suite** — expose a local PTY to browsers over WebSocket or WebRTC.
+
+| Package | What it does |
+|---|---|
 | [`@beamhop/shell-protocol`](packages/shell-protocol) | Shared TypeScript types and message envelopes for the shell transport. |
 | [`@beamhop/shell-client`](packages/shell-client)     | Browser SDK. Connects to a host shell over WebSocket or P2P (WebRTC). |
 | [`@beamhop/shell-server`](packages/shell-server)     | Host-side PTY server + `use-my-shell` CLI. Wraps node-pty, serves WS, joins P2P rooms. |
 | [`@beamhop/shell-relay`](packages/shell-relay)       | `use-my-shell-relay` CLI. Self-hosted WebSocket signaling relay for the P2P transport. |
+
+**ACP suite** — bridge a browser UI to an ACP-compatible coding-agent CLI (Claude Code, Gemini, Codex, ...).
+
+| Package | What it does |
+|---|---|
+| [`@beamhop/acp-protocol`](packages/acp-protocol) | Shared wire types for the ACP bridge. Usually pulled in transitively. |
+| [`@beamhop/acp-server`](packages/acp-server)     | Node gateway. Spawns the agent CLI, multiplexes sessions, serves WebSocket. |
+| [`@beamhop/acp-client`](packages/acp-client)     | Browser SDK. `connectAcp()` over WebSocket, or BYO `Transport` for custom wires. |
+| [`@beamhop/acp-p2p`](packages/acp-p2p)           | P2P transport over [trystero](https://github.com/dmotz/trystero) WebRTC rooms. Two entries: `/peer` (browser) and `/host` (node). |
+| [`@beamhop/acp-relay`](packages/acp-relay)       | Generic WebSocket peer router. Drop-in fallback when WebRTC fails. |
 
 Each package keeps its own README with install + usage docs. Click the package name above.
 

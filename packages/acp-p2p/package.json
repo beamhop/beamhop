@@ -1,0 +1,50 @@
+{
+  "name": "@beamhop/acp-p2p",
+  "version": "0.0.0",
+  "description": "Peer-to-peer transport for ACP coding-agent sessions over trystero WebRTC rooms. `/peer` is the browser SDK; `/host` runs the agent on a host process. Strategy-agnostic — bring your own joinRoom.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beamhop/beamhop.git",
+    "directory": "packages/acp-p2p"
+  },
+  "type": "module",
+  "exports": {
+    "./peer": {
+      "types": "./dist/peer.d.ts",
+      "import": "./dist/peer.js"
+    },
+    "./host": {
+      "types": "./dist/host.d.ts",
+      "import": "./dist/host.js",
+      "require": "./dist/host.cjs"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun build ./src/peer.ts --outdir ./dist --target browser --format esm --sourcemap --external '@beamhop/acp-protocol' --external '@beamhop/acp-client' --external '@trystero-p2p/core' && bun build ./src/host.ts --outdir ./dist --target node --format esm --sourcemap --external '@beamhop/acp-protocol' --external '@beamhop/acp-server' --external '@trystero-p2p/core' && bun build ./src/host.ts --outdir ./dist --target node --format cjs --sourcemap --entry-naming '[dir]/[name].cjs' --external '@beamhop/acp-protocol' --external '@beamhop/acp-server' --external '@trystero-p2p/core' && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "bun test",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@beamhop/acp-client": "workspace:*",
+    "@beamhop/acp-protocol": "workspace:*",
+    "@beamhop/acp-server": "workspace:*"
+  },
+  "peerDependencies": {
+    "@trystero-p2p/core": "^0.24.0"
+  },
+  "devDependencies": {
+    "@trystero-p2p/core": "^0.24.0",
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "bun": ">=1.2.0",
+    "node": ">=22"
+  }
+}

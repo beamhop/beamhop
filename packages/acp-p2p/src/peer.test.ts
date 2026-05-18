@@ -1,7 +1,7 @@
 /**
  * Tests for connectAcpP2P. Uses a fake trystero room + a hand-rolled fake
  * "host" peer that mimics what createAcpP2PHost broadcasts. This keeps the
- * client test independent of the server package while still proving the
+ * peer test independent of the gateway code while still proving the
  * shared-session semantics work end-to-end.
  */
 import { describe, expect, test } from "bun:test";
@@ -12,7 +12,7 @@ import {
   type WireMessage,
 } from "@beamhop/acp-protocol";
 import { FakeNetwork, fakeJoinRoom } from "./__fixtures__/fake-room.js";
-import { connectAcpP2P } from "./connection.js";
+import { connectAcpP2P } from "./peer.js";
 
 const tick = () => new Promise<void>((r) => queueMicrotask(r));
 
@@ -64,7 +64,13 @@ function fakeHost(network: FakeNetwork) {
           payload: {
             direction: "a2c",
             method: "session/update",
-            params: { sessionId: "test-session", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "hi" } } },
+            params: {
+              sessionId: "test-session",
+              update: {
+                sessionUpdate: "agent_message_chunk",
+                content: { type: "text", text: "hi" },
+              },
+            },
           },
         }),
       );
@@ -178,8 +184,6 @@ describe("connectAcpP2P", () => {
       readyTimeoutMs: 2000,
     });
 
-    // B observes A's prompt traffic via the `update` event but never gets a
-    // matching rpc-result for its own (unsent) inflight map.
     const bUpdates: unknown[] = [];
     b.on("update", (u) => bUpdates.push(u));
 
@@ -187,7 +191,6 @@ describe("connectAcpP2P", () => {
     const result = (await stream.result) as { stopReason: string };
     expect(result.stopReason).toBe("end_turn");
 
-    // Give B's microtasks a chance to flush the broadcast.
     await tick();
     await tick();
     expect(bUpdates.length).toBeGreaterThanOrEqual(1);

@@ -64,24 +64,11 @@
         "@types/bun": "latest",
       },
     },
-    "packages/acp-p2p-client": {
-      "name": "@beamhop/acp-p2p-client",
+    "packages/acp-p2p": {
+      "name": "@beamhop/acp-p2p",
       "version": "0.0.0",
       "dependencies": {
-        "@beamhop/acp-protocol": "workspace:*",
-      },
-      "devDependencies": {
-        "@trystero-p2p/core": "^0.24.0",
-        "@types/bun": "latest",
-      },
-      "peerDependencies": {
-        "@trystero-p2p/core": "^0.24.0",
-      },
-    },
-    "packages/acp-p2p-server": {
-      "name": "@beamhop/acp-p2p-server",
-      "version": "0.0.0",
-      "dependencies": {
+        "@beamhop/acp-client": "workspace:*",
         "@beamhop/acp-protocol": "workspace:*",
         "@beamhop/acp-server": "workspace:*",
       },
@@ -112,8 +99,7 @@
         "ws": "^8.18.0",
       },
       "devDependencies": {
-        "@beamhop/acp-p2p-client": "workspace:*",
-        "@beamhop/acp-p2p-server": "workspace:*",
+        "@beamhop/acp-p2p": "workspace:*",
         "@trystero-p2p/core": "^0.24.0",
         "@types/bun": "latest",
         "@types/node": "^22.0.0",
@@ -297,9 +283,7 @@
 
     "@beamhop/acp-client": ["@beamhop/acp-client@workspace:packages/acp-client"],
 
-    "@beamhop/acp-p2p-client": ["@beamhop/acp-p2p-client@workspace:packages/acp-p2p-client"],
-
-    "@beamhop/acp-p2p-server": ["@beamhop/acp-p2p-server@workspace:packages/acp-p2p-server"],
+    "@beamhop/acp-p2p": ["@beamhop/acp-p2p@workspace:packages/acp-p2p"],
 
     "@beamhop/acp-playground": ["@beamhop/acp-playground@workspace:apps/acp-playground"],
 

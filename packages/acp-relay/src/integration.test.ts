@@ -15,8 +15,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import WebSocket from "ws";
 import { defineAgent } from "@beamhop/acp-server";
-import { createAcpP2PHost, type AcpP2PHost } from "@beamhop/acp-p2p-server";
-import { connectAcpP2P, type AcpP2PSession } from "@beamhop/acp-p2p-client";
+import { createAcpP2PHost, type AcpP2PHost } from "@beamhop/acp-p2p/host";
+import { connectAcpP2P, type AcpP2PSession } from "@beamhop/acp-p2p/peer";
 import { serveRelay, type ServeRelayHandle } from "./adapters/standalone.js";
 import { createRelayJoinRoom } from "./client.js";
 

@@ -1,0 +1,80 @@
+---
+title: ACP suite
+description: Bridge a browser UI to an ACP-compatible coding-agent CLI (Claude Code, Gemini, Codex…) over WebSocket or WebRTC.
+---
+
+import { LinkCard, CardGrid, Aside } from '@astrojs/starlight/components';
+
+The **ACP suite** puts a coding-agent CLI on the other end of a browser tab. The agent runs as a normal stdio process on a host machine; the browser talks to it through a gateway that speaks the [Agent Client Protocol](https://github.com/zed-industries/agent-client-protocol). You pick the transport — WebSocket for the simple case, WebRTC P2P for direct peer connections — and the packages take care of the rest.
+
+## How the five packages fit together
+
+```
+                       ┌──────────────────────────┐
+                       │  @beamhop/acp-protocol   │  ← shared wire types
+                       └────────────┬─────────────┘
+                                    │
+              ┌─────────────────────┼─────────────────────┐
+              │                                           │
+   ┌──────────▼──────────┐                   ┌────────────▼────────────┐
+   │ @beamhop/acp-client │ ◄──── WebSocket ─►│  @beamhop/acp-server    │
+   │     (browser)       │                   │   (node gateway)        │ ──► agent CLI (stdio)
+   └──────────┬──────────┘                   └────────────▲────────────┘
+              │                                           │
+              │ same Session class,                       │ host wraps the
+              │ swap the Transport                        │ room as one peer
+              ▼                                           │
+   ┌─────────────────────┐                   ┌────────────┴────────────┐
+   │ @beamhop/acp-p2p    │ ◄──── WebRTC ────►│  @beamhop/acp-p2p       │
+   │     /peer (browser) │   (trystero room) │     /host (node)        │
+   └─────────────────────┘                   └─────────────────────────┘
+                                                          ▲
+                                                          │ fallback when
+                                                          │ WebRTC fails
+                                              ┌───────────┴─────────────┐
+                                              │  @beamhop/acp-relay     │
+                                              │  (generic WS router)    │
+                                              └─────────────────────────┘
+```
+
+`acp-protocol` defines the wire format — every other package depends on it (and re-exports the types you'll touch, so you usually don't install it directly).
+
+`acp-server` and `acp-client` are the WebSocket path: server spawns the agent CLI, client drives it from the browser with `connectAcp()`. This is the simple case.
+
+`acp-p2p` is the WebRTC path. Same `Session` class on the browser side — only the transport changes. `/peer` joins a [trystero](https://github.com/dmotz/trystero) room; `/host` runs the gateway and joins as the agent-bearing peer.
+
+`acp-relay` is a tiny generic WebSocket router that satisfies trystero's `Room` contract. Drop it in as the trystero strategy when WebRTC can't reach (corporate firewalls, symmetric NATs without TURN).
+
+## The pieces
+
+<CardGrid>
+  <LinkCard
+    title="acp-protocol"
+    description="Shared TypeScript wire types. Usually pulled in transitively — most apps don't install it directly."
+    href="/beamhop/packages/acp-protocol/"
+  />
+  <LinkCard
+    title="acp-server"
+    description="Node gateway. Spawns the agent CLI, multiplexes sessions, serves WebSocket. Adapters for standalone, Express, Hono, Fastify."
+    href="/beamhop/packages/acp-server/"
+  />
+  <LinkCard
+    title="acp-client"
+    description="Browser SDK. connectAcp() over WebSocket, or BYO Transport for custom wires. Auto-reconnect, typed events, model selection."
+    href="/beamhop/packages/acp-client/"
+  />
+  <LinkCard
+    title="acp-p2p"
+    description="WebRTC P2P transport over trystero rooms. Two entries: /peer (browser) and /host (node). Same Session as acp-client."
+    href="/beamhop/packages/acp-p2p/"
+  />
+  <LinkCard
+    title="acp-relay"
+    description="Generic WebSocket peer router. Drop-in trystero strategy for when WebRTC fails."
+    href="/beamhop/packages/acp-relay/"
+  />
+</CardGrid>
+
+<Aside type="tip" title="Start here">
+  Building a browser UI for an agent on a server you control? You only need **acp-server** + **acp-client**. Reach for **acp-p2p** when you want peer-to-peer without a gateway in the middle.
+</Aside>

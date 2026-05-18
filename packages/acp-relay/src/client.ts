@@ -28,7 +28,7 @@ export interface CreateRelayJoinRoomOptions {
  * @example
  * ```ts
  * import { createRelayJoinRoom } from '@beamhop/acp-relay'
- * import { createAcpP2PHost } from '@beamhop/acp-p2p-server'
+ * import { createAcpP2PHost } from '@beamhop/acp-p2p/host'
  *
  * await createAcpP2PHost({
  *   joinRoom: createRelayJoinRoom({ relayUrl: 'wss://relay.example.com' }),

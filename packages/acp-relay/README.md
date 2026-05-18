@@ -1,17 +1,16 @@
 # @beamhop/acp-relay
 
-WebSocket fallback transport for `@beamhop/acp-p2p-server` and
-`@beamhop/acp-p2p-client`. Use it when WebRTC fails (corporate firewalls,
-symmetric NATs without TURN, restrictive networks) — or as a primary
-transport when you want zero WebRTC.
+WebSocket fallback transport for `@beamhop/acp-p2p`. Use it when WebRTC
+fails (corporate firewalls, symmetric NATs without TURN, restrictive
+networks) — or as a primary transport when you want zero WebRTC.
 
 The relay does **not** know about ACP. It's a generic peer-to-peer router
-that satisfies the trystero `Room` contract. The same `acp-p2p-*` packages
-run on top of it, unchanged.
+that satisfies the trystero `Room` contract. The same `acp-p2p` package
+runs on top of it, unchanged.
 
 ```
-peer A ─┐                                  ┌─► agent CLI
-peer B ─┼── ws relay ── acp-p2p-server ── gateway
+peer A ─┐                                       ┌─► agent CLI
+peer B ─┼── ws relay ── acp-p2p/host ───────── gateway
 peer C ─┘
 ```
 
@@ -25,7 +24,7 @@ bun add @beamhop/acp-relay
 
 ```ts
 import { createRelayJoinRoom } from "@beamhop/acp-relay";
-import { createAcpP2PHost } from "@beamhop/acp-p2p-server";
+import { createAcpP2PHost } from "@beamhop/acp-p2p/host";
 
 const host = await createAcpP2PHost({
   joinRoom: createRelayJoinRoom({ relayUrl: "wss://relay.example.com" }),
@@ -37,7 +36,7 @@ const host = await createAcpP2PHost({
 
 ```ts
 import { createRelayJoinRoom } from "@beamhop/acp-relay";
-import { connectAcpP2P } from "@beamhop/acp-p2p-client";
+import { connectAcpP2P } from "@beamhop/acp-p2p/peer";
 
 const session = await connectAcpP2P({
   joinRoom: createRelayJoinRoom({ relayUrl: "wss://relay.example.com" }),
@@ -98,7 +97,7 @@ or per-peer auth, supply `authorize(ctx)`.
 ## Limits
 
 - Best-effort fan-out. If a peer isn't connected when you send, they don't
-  see the frame. (Late joiners still benefit from `acp-p2p-server`'s
+  see the frame. (Late joiners still benefit from `acp-p2p/host`'s
   `ready` replay because that's a higher-level cache.)
 - Default 32 peers per room, 1000 rooms per process — tune via
   `createRelayServer` options.
@@ -106,6 +105,6 @@ or per-peer auth, supply `authorize(ctx)`.
 
 ## See also
 
-- `@beamhop/acp-p2p-server` — collaborative ACP host (uses any trystero `joinRoom`).
-- `@beamhop/acp-p2p-client` — peer SDK to join the host's session.
+- `@beamhop/acp-p2p` — collaborative ACP transport. `/host` runs the gateway, `/peer` joins.
 - `@beamhop/acp-server` — the underlying WebSocket-based 1:1 gateway.
+- `@beamhop/acp-client` — the WebSocket peer SDK (the shared Session that `acp-p2p/peer` reuses).

@@ -1,8 +1,9 @@
 # @beamhop/acp-client
 
-Browser SDK that drives an [`@beamhop/acp-server`](../acp-server) gateway over
-WebSocket. Framework-agnostic — use it directly, wrap it in
-[`@beamhop/acp-ui`](../acp-ui), or build your own bindings.
+Browser SDK that drives an [`@beamhop/acp-server`](../acp-server) gateway.
+WebSocket out of the box; pluggable `Transport` underneath, so the same
+`Session` runs over [`@beamhop/acp-p2p`](../acp-p2p) WebRTC rooms (or
+anything else you wire up). Framework-agnostic.
 
 ## Install
 
@@ -75,6 +76,45 @@ session.on("commands", (cmds) => {
 session.prompt("/init");
 ```
 
+### Custom transport
+
+`connectAcp()` is the WebSocket shortcut. Under the hood it builds a
+`WsTransport` and feeds it to `Session`. If you want a different wire —
+WebRTC, a worker `MessagePort`, an in-process channel for tests — implement
+`Transport` and construct `Session` yourself.
+
+```ts
+import { Session, type Transport } from "@beamhop/acp-client";
+
+const transport: Transport = {
+  send: (frame) => myChannel.post(frame),
+  open: async () => { /* connect */ },
+  close: () => myChannel.close(),
+  onMessage: (cb) => myChannel.on("frame", cb),
+  onClose:   (cb) => myChannel.on("close", cb),
+  onError:   (cb) => myChannel.on("error", cb),
+  capabilities: { multiplex: false, reconnectable: false },
+};
+
+const session = new Session(
+  { agent: "claude-code", clientInfo: { name: "my-app", version: "1.0.0" }, handlers },
+  transport,
+);
+await session.openAndAwaitReady();
+```
+
+This is exactly how [`@beamhop/acp-p2p/peer`](../acp-p2p) reuses the same
+session state machine over a trystero room. Two capability flags steer
+`Session` behaviour:
+
+- `multiplex: true` — silently ignore unmatched RPC replies (they belong to
+  another peer on the same channel). Set this for shared transports like
+  multi-peer rooms.
+- `reconnectable: true` — the transport reconnects under the hood, so
+  `Session` emits `open` / `close` / `reconnecting` and keeps inflight
+  prompts alive across drops. Set this for WS-with-retry; leave it `false`
+  for one-shot channels.
+
 ## DX guarantees
 
 - `connectAcp` throws synchronously if you forget `onPermissionRequest`
@@ -92,8 +132,19 @@ session.prompt("/init");
 
 | Symbol | Notes |
 |---|---|
-| `connectAcp(opts)` | Returns `Promise<AcpSession>`. Throws on missing handlers or no WebSocket impl. |
+| `connectAcp(opts)` | Returns `Promise<AcpSession>`. Throws on missing handlers or no WebSocket impl. Wraps `Session` + `WsTransport`. |
 | `MissingHandlerError` | Thrown when required handlers (e.g. `onPermissionRequest`) are missing. |
+
+### Transport
+
+| Symbol | Notes |
+|---|---|
+| `Transport` | Duplex string-frame channel interface. Implement to plug in a non-WebSocket wire (WebRTC, MessagePort, in-process). |
+| `TransportCapabilities` | `{ multiplex?, reconnectable? }`. Gates session behaviour like "ignore unmatched RPC ids" and "emit reconnecting events". |
+| `WsTransport` | Bundled WebSocket impl. Owns the socket lifecycle, reconnect policy, and fatal-close-code handling. |
+| `WsTransportOptions` | `{ url, auth, reconnect?, WebSocketImpl? }`. Same shape `connectAcp` uses internally. |
+| `Session` | The transport-agnostic state machine. `new Session(opts, transport)` + `openAndAwaitReady()` is the BYO-transport path. |
+| `SessionOptions` | `{ agent, clientInfo, handlers, authToken? }`. |
 
 ### Session
 
