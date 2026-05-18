@@ -65,15 +65,25 @@ function extractTitleAndDescription(
   };
 }
 
+// Normalise Astro's `base` to a leading-and-trailing-slash form (e.g. "/beamhop/").
+// "/" stays "/". "/foo" or "foo/" both become "/foo/".
+function normaliseBase(base: string): string {
+  let b = base.startsWith("/") ? base : `/${base}`;
+  if (!b.endsWith("/")) b = `${b}/`;
+  return b;
+}
+
 // Rewrite markdown so cross-references work on the docs site.
 // Two transforms:
-//   1. ../../README.md[#anchor]  →  /[#anchor]
+//   1. ../../README.md[#anchor]  →  <base>[#anchor]
 //   2. bare `@beamhop/<slug>` mentions (in prose, not code blocks) → linked
-function rewriteMarkdown(markdown: string, selfNpm: string): string {
-  // (1) Root README cross-refs.
+function rewriteMarkdown(markdown: string, selfNpm: string, base: string): string {
+  const b = normaliseBase(base);
+
+  // (1) Root README cross-refs. The site root with a base is e.g. "/beamhop/".
   let out = markdown.replace(
     /\]\(\.\.\/\.\.\/README\.md(#[^)]+)?\)/g,
-    (_, anchor) => `](/${anchor ?? ""})`,
+    (_, anchor) => `](${b}${anchor ?? ""})`,
   );
 
   // (2) Linkify bare `@beamhop/<slug>` in prose. Walk line-by-line so we can
@@ -93,7 +103,7 @@ function rewriteMarkdown(markdown: string, selfNpm: string): string {
       (match, name: string) => {
         if (!ALL_NPM_NAMES.has(name) || name === selfNpm) return match;
         const slug = NPM_TO_SLUG.get(name)!;
-        return `[\`${name}\`](/packages/${slug}/)`;
+        return `[\`${name}\`](${b}packages/${slug}/)`;
       },
     );
   }
@@ -123,7 +133,7 @@ async function loadPackage(
     pkgJson.description ?? pkg.npm,
   );
 
-  const body = rewriteMarkdown(bodyWithoutH1, pkg.npm);
+  const body = rewriteMarkdown(bodyWithoutH1, pkg.npm, ctx.config.base);
   const id = `packages/${pkg.slug}`;
   const digest = ctx.generateDigest(body + title + description);
 

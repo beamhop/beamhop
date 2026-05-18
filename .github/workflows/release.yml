@@ -1,8 +1,12 @@
 name: Release
 
+# Disabled while we don't have NPM_TOKEN configured.
+# To re-enable: add NPM_TOKEN to repo secrets, then change the trigger back to
+#   on:
+#     push:
+#       branches: [main]
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}

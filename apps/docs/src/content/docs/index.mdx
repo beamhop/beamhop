@@ -8,11 +8,11 @@ hero:
     file: ../../assets/logo.svg
   actions:
     - text: Explore Beambox
-      link: /beambox/
+      link: /beamhop/beambox/
       icon: right-arrow
       variant: primary
     - text: Explore the Shell suite
-      link: /shell/
+      link: /beamhop/shell/
       icon: right-arrow
       variant: secondary
 ---
@@ -21,10 +21,10 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 <CardGrid>
   <Card title="Beambox" icon="seti:docker">
-    Dockerfile-style image builds on top of [microsandbox](https://github.com/microsandbox/microsandbox). Produces reusable VM snapshots, not OCI tarballs. → [Reference](/packages/beambox/)
+    Dockerfile-style image builds on top of [microsandbox](https://github.com/microsandbox/microsandbox). Produces reusable VM snapshots, not OCI tarballs. → [Reference](/beamhop/packages/beambox/)
   </Card>
   <Card title="Shell suite" icon="seti:powershell">
-    Expose a local shell to browsers over WebSocket or P2P (WebRTC). Four packages that fit together: [protocol](/packages/shell-protocol/), [client](/packages/shell-client/), [server](/packages/shell-server/), [relay](/packages/shell-relay/).
+    Expose a local shell to browsers over WebSocket or P2P (WebRTC). Four packages that fit together: [protocol](/beamhop/packages/shell-protocol/), [client](/beamhop/packages/shell-client/), [server](/beamhop/packages/shell-server/), [relay](/beamhop/packages/shell-relay/).
   </Card>
 </CardGrid>
 
