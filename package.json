@@ -1,0 +1,31 @@
+{
+  "name": "beamhop",
+  "private": true,
+  "type": "module",
+  "description": "The beamhop monorepo — sandboxed builds and remote-shell primitives.",
+  "workspaces": ["packages/*", "examples/*", "apps/*"],
+  "packageManager": "bun@1.3.10",
+  "engines": {
+    "bun": ">=1.2.0",
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "bun --filter @beamhop/shell-protocol build && bun --filter './packages/*' build",
+    "typecheck": "bun --filter @beamhop/shell-protocol build && bun --filter './packages/*' typecheck",
+    "test": "bun --filter './packages/*' test",
+    "clean": "bun --filter './packages/*' clean && rm -rf node_modules",
+    "format": "prettier --write .",
+    "docs:dev": "bun --filter @beamhop/docs dev",
+    "docs:build": "bun --filter @beamhop/docs build",
+    "docs:preview": "bun --filter @beamhop/docs preview",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "bun run build && changeset publish",
+    "postinstall": "bun ./scripts/fix-node-pty-perms.mjs"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.10",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  }
+}

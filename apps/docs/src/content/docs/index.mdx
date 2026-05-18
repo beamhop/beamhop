@@ -1,0 +1,38 @@
+---
+title: beamhop
+description: Sandboxed builds and remote-shell primitives. One repo, two product lines.
+template: splash
+hero:
+  tagline: Sandboxed builds and remote-shell primitives. One repo, two product lines.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Explore Beambox
+      link: /beambox/
+      icon: right-arrow
+      variant: primary
+    - text: Explore the Shell suite
+      link: /shell/
+      icon: right-arrow
+      variant: secondary
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="Beambox" icon="seti:docker">
+    Dockerfile-style image builds on top of [microsandbox](https://github.com/microsandbox/microsandbox). Produces reusable VM snapshots, not OCI tarballs. → [Reference](/packages/beambox/)
+  </Card>
+  <Card title="Shell suite" icon="seti:powershell">
+    Expose a local shell to browsers over WebSocket or P2P (WebRTC). Four packages that fit together: [protocol](/packages/shell-protocol/), [client](/packages/shell-client/), [server](/packages/shell-server/), [relay](/packages/shell-relay/).
+  </Card>
+</CardGrid>
+
+<CardGrid>
+  <Card title="Always in sync" icon="approve-check">
+    Every package page on this site is rendered straight from that package's README at build time. The docs you see are the docs that ship.
+  </Card>
+  <Card title="Open source" icon="github">
+    Apache-2.0 licensed. [github.com/beamhop/beamhop](https://github.com/beamhop/beamhop).
+  </Card>
+</CardGrid>

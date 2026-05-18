@@ -1,0 +1,6 @@
+FROM alpine:3.19
+ENV GREETING=hi
+WORKDIR /work
+COPY app/index.js /work/index.js
+RUN apk add --no-cache nodejs
+CMD ["node", "/work/index.js"]

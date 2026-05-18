@@ -1,0 +1,61 @@
+---
+title: Shell suite
+description: Four packages that expose a local shell to browsers over WebSocket or P2P (WebRTC).
+---
+
+import { LinkCard, CardGrid, Aside } from '@astrojs/starlight/components';
+
+The **shell suite** is four small packages that work together to put a real PTY on the other end of a browser tab. You pick the transport (WebSocket for the simple case, WebRTC P2P for NAT-traversing peer connections) and the packages take care of the rest.
+
+## How the four packages fit together
+
+```
+                      ┌─────────────────────────┐
+                      │   @beamhop/shell-protocol   │  ← shared message types
+                      └────────────┬────────────┘
+                                   │
+                ┌──────────────────┼──────────────────┐
+                │                                     │
+   ┌────────────▼────────────┐         ┌──────────────▼──────────┐
+   │  @beamhop/shell-client  │ ←──WS──→│  @beamhop/shell-server  │
+   │       (browser)         │ ←──P2P─→│  (host, wraps node-pty) │
+   └─────────────────────────┘         └─────────────────────────┘
+                                                     ▲
+                                                     │ optional, only for P2P
+                                                     │
+                                       ┌─────────────┴───────────┐
+                                       │  @beamhop/shell-relay   │
+                                       │  (WebSocket signaling)  │
+                                       └─────────────────────────┘
+```
+
+`shell-protocol` defines the wire format. `shell-client` and `shell-server` both depend on it. `shell-relay` is a tiny self-hosted signaling endpoint you only need if you're using the P2P transport with the `ws-relay` strategy.
+
+## The pieces
+
+<CardGrid>
+  <LinkCard
+    title="shell-protocol"
+    description="Shared TypeScript types and message envelopes. Pure types, no runtime."
+    href="/packages/shell-protocol/"
+  />
+  <LinkCard
+    title="shell-client"
+    description="Browser SDK. One connect() call, two transports (WebSocket / P2P)."
+    href="/packages/shell-client/"
+  />
+  <LinkCard
+    title="shell-server"
+    description="Host-side PTY server. Ships the use-my-shell CLI."
+    href="/packages/shell-server/"
+  />
+  <LinkCard
+    title="shell-relay"
+    description="Self-hosted WebSocket signaling relay. Ships use-my-shell-relay."
+    href="/packages/shell-relay/"
+  />
+</CardGrid>
+
+<Aside type="caution" title="Security model">
+  Treat access tokens like SSH keys. The WebSocket server defaults to binding `127.0.0.1` for a reason. P2P offers end-to-end encryption via a shared password — see the server reference for the full threat model.
+</Aside>

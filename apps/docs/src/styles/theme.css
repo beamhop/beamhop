@@ -1,0 +1,35 @@
+/* beamhop — unified violet+cyan palette, layered on Starlight defaults. */
+
+:root {
+  --beam-violet: #7c3aed;
+  --beam-cyan:   #06b6d4;
+  --beam-ink:    #0b0c14;
+
+  --sl-color-accent-low:  #312e81;
+  --sl-color-accent:      var(--beam-violet);
+  --sl-color-accent-high: #c4b5fd;
+}
+
+:root[data-theme="dark"] {
+  --sl-color-bg:         var(--beam-ink);
+  --sl-color-bg-nav:     #0f1018;
+  --sl-color-bg-sidebar: #0f1018;
+  --sl-color-bg-inline-code: #1a1a2e;
+}
+
+/* Splash hero — subtle aurora. Only on pages using the splash template. */
+[data-has-hero] .page {
+  background:
+    radial-gradient(circle at 15% -10%, color-mix(in oklab, var(--beam-violet) 22%, transparent), transparent 55%),
+    radial-gradient(circle at 85% 10%, color-mix(in oklab, var(--beam-cyan)   18%, transparent), transparent 55%);
+}
+
+/* Make the hero logo breathe. */
+.hero img {
+  filter: drop-shadow(0 0 24px color-mix(in oklab, var(--beam-violet) 35%, transparent));
+}
+
+/* Tighter code block presence. */
+.expressive-code .frame {
+  border-radius: 10px;
+}

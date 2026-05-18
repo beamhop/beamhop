@@ -1,0 +1,31 @@
+{
+  "name": "@beamhop/shell-protocol",
+  "version": "0.0.0",
+  "description": "Shared protocol types and message envelopes for the beamhop shell transport.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beamhop/beamhop.git",
+    "directory": "packages/shell-protocol"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap && bun build ./src/index.ts --outdir ./dist --target node --format cjs --sourcemap --entry-naming '[dir]/[name].cjs' && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "test": "echo '(no tests yet)'",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  }
+}

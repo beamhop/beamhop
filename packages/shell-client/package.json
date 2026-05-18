@@ -1,0 +1,59 @@
+{
+  "name": "@beamhop/shell-client",
+  "version": "0.0.0",
+  "description": "Browser client for beamhop shell. Connect over WebSocket or P2P (WebRTC) using any Trystero strategy.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beamhop/beamhop.git",
+    "directory": "packages/shell-client"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./p2p": {
+      "types": "./dist/connection-p2p.d.ts",
+      "import": "./dist/connection-p2p.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts ./src/connection-p2p.ts --outdir ./dist --target browser --format esm --splitting --sourcemap --external '@trystero-p2p/*' --external '@beamhop/shell-protocol' && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "test": "echo '(no tests yet)'",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@beamhop/shell-protocol": "workspace:*",
+    "@trystero-p2p/core": "^0.24.0"
+  },
+  "peerDependencies": {
+    "@trystero-p2p/firebase": "^0.24.0",
+    "@trystero-p2p/ipfs": "^0.24.0",
+    "@trystero-p2p/mqtt": "^0.24.0",
+    "@trystero-p2p/nostr": "^0.24.0",
+    "@trystero-p2p/supabase": "^0.24.0",
+    "@trystero-p2p/torrent": "^0.24.0",
+    "@trystero-p2p/ws-relay": "^0.24.0"
+  },
+  "peerDependenciesMeta": {
+    "@trystero-p2p/firebase": { "optional": true },
+    "@trystero-p2p/ipfs": { "optional": true },
+    "@trystero-p2p/mqtt": { "optional": true },
+    "@trystero-p2p/nostr": { "optional": true },
+    "@trystero-p2p/supabase": { "optional": true },
+    "@trystero-p2p/torrent": { "optional": true },
+    "@trystero-p2p/ws-relay": { "optional": true }
+  },
+  "devDependencies": {
+    "@trystero-p2p/ws-relay": "^0.24.0"
+  }
+}

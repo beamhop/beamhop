@@ -1,0 +1,26 @@
+---
+title: Beambox
+description: Dockerfile-style image builds on top of microsandbox. Reusable snapshots, not OCI tarballs.
+---
+
+import { LinkCard, Aside } from '@astrojs/starlight/components';
+
+**Beambox** brings Dockerfile semantics to [microsandbox](https://github.com/microsandbox/microsandbox). You describe a sandbox configuration once — either with a fluent builder or with a real `Dockerfile` — and beambox produces a reusable VM snapshot stored under `~/.microsandbox/images/`. Fresh microVMs spawn from that snapshot in milliseconds. No daemon, no registry.
+
+## When to reach for it
+
+- You want reproducible, prebuilt sandboxes for running untrusted code.
+- You're already on microsandbox and you miss the ergonomics of a `Dockerfile`.
+- You need millisecond cold-starts that container-based sandboxes can't hit.
+
+## Get started
+
+<LinkCard
+  title="Beambox reference"
+  description="Install, quickstart, API, supported Dockerfile directives, caching model."
+  href="/packages/beambox/"
+/>
+
+<Aside type="note">
+  Beambox is the only package in this monorepo that depends on `microsandbox`. The shell suite is independent.
+</Aside>

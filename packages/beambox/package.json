@@ -1,0 +1,40 @@
+{
+  "name": "@beamhop/beambox",
+  "version": "0.1.0",
+  "description": "Dockerfile-style image builds for microsandbox — produces reusable snapshots, not OCI tarballs.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beamhop/beamhop.git",
+    "directory": "packages/beambox"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap --external microsandbox && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test test/dockerfile-parser.test.ts test/resolve-image.test.ts test/run-options.test.ts test/one-shot.test.ts",
+    "test:integration": "bun test test/image-builder.test.ts",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "keywords": ["microsandbox", "dockerfile", "sandbox", "microvm", "image"],
+  "peerDependencies": {
+    "microsandbox": "*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
+    "microsandbox": "*"
+  }
+}

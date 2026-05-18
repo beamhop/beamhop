@@ -1,0 +1,24 @@
+export {
+  SandboxImage,
+  ImageRef,
+  BuildStepError,
+  ImageNotFoundError,
+  SandboxExitError,
+  ensureRuntime,
+} from "./image-builder.js";
+export type { OneShotOptions } from "./image-builder.js";
+export { parseDockerfile, DockerfileParseError } from "./dockerfile-parser.js";
+export { parsePortSpec, parseVolumeSpec } from "./image-builder.js";
+export type {
+  BuildStep,
+  BuildOptions,
+  RunOptions,
+  PortMapping,
+  PortSpec,
+  VolumeMount,
+  VolumeSpec,
+  BindMount,
+  NamedVolumeMount,
+  TmpfsMount,
+  ImageMetadata,
+} from "./types.js";
