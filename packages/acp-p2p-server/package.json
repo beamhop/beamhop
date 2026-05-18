@@ -1,0 +1,47 @@
+{
+  "name": "@beamhop/acp-p2p-server",
+  "version": "0.0.0",
+  "description": "Host an ACP coding-agent session over a trystero WebRTC room. One peer hosts the agent; multiple peers join and observe. Strategy-agnostic — bring your own joinRoom.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beamhop/beamhop.git",
+    "directory": "packages/acp-p2p-server"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap --external '@beamhop/acp-protocol' --external '@beamhop/acp-server' --external '@trystero-p2p/core' && bun build ./src/index.ts --outdir ./dist --target node --format cjs --sourcemap --entry-naming '[dir]/[name].cjs' --external '@beamhop/acp-protocol' --external '@beamhop/acp-server' --external '@trystero-p2p/core' && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "bun test",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@beamhop/acp-protocol": "workspace:*",
+    "@beamhop/acp-server": "workspace:*"
+  },
+  "peerDependencies": {
+    "@trystero-p2p/core": "^0.24.0"
+  },
+  "devDependencies": {
+    "@trystero-p2p/core": "^0.24.0",
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "bun": ">=1.2.0",
+    "node": ">=22"
+  }
+}

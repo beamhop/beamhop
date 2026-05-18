@@ -1,0 +1,67 @@
+{
+  "name": "@beamhop/acp-relay",
+  "version": "0.0.0",
+  "description": "WebSocket fallback transport for @beamhop/acp-p2p-{server,client}. Exposes a trystero-compatible joinRoom backed by a tiny relay server, plus a withFallback() wrapper that switches from WebRTC to the relay on timeout.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beamhop/beamhop.git",
+    "directory": "packages/acp-relay"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js",
+      "require": "./dist/server.cjs"
+    },
+    "./bun": {
+      "types": "./dist/adapters/bun.d.ts",
+      "import": "./dist/adapters/bun.js"
+    },
+    "./node": {
+      "types": "./dist/adapters/node.d.ts",
+      "import": "./dist/adapters/node.js"
+    },
+    "./standalone": {
+      "types": "./dist/adapters/standalone.d.ts",
+      "import": "./dist/adapters/standalone.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun run scripts/build.ts && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "bun test",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@beamhop/acp-server": "workspace:*",
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "@trystero-p2p/core": "^0.24.0"
+  },
+  "devDependencies": {
+    "@beamhop/acp-p2p-client": "workspace:*",
+    "@beamhop/acp-p2p-server": "workspace:*",
+    "@trystero-p2p/core": "^0.24.0",
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.12",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "bun": ">=1.2.0",
+    "node": ">=22"
+  }
+}

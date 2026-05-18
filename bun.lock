@@ -64,6 +64,36 @@
         "@types/bun": "latest",
       },
     },
+    "packages/acp-p2p-client": {
+      "name": "@beamhop/acp-p2p-client",
+      "version": "0.0.0",
+      "dependencies": {
+        "@beamhop/acp-protocol": "workspace:*",
+      },
+      "devDependencies": {
+        "@trystero-p2p/core": "^0.24.0",
+        "@types/bun": "latest",
+      },
+      "peerDependencies": {
+        "@trystero-p2p/core": "^0.24.0",
+      },
+    },
+    "packages/acp-p2p-server": {
+      "name": "@beamhop/acp-p2p-server",
+      "version": "0.0.0",
+      "dependencies": {
+        "@beamhop/acp-protocol": "workspace:*",
+        "@beamhop/acp-server": "workspace:*",
+      },
+      "devDependencies": {
+        "@trystero-p2p/core": "^0.24.0",
+        "@types/bun": "latest",
+        "@types/node": "^22.0.0",
+      },
+      "peerDependencies": {
+        "@trystero-p2p/core": "^0.24.0",
+      },
+    },
     "packages/acp-protocol": {
       "name": "@beamhop/acp-protocol",
       "version": "0.0.0",
@@ -72,6 +102,26 @@
       },
       "devDependencies": {
         "@types/bun": "latest",
+      },
+    },
+    "packages/acp-relay": {
+      "name": "@beamhop/acp-relay",
+      "version": "0.0.0",
+      "dependencies": {
+        "@beamhop/acp-server": "workspace:*",
+        "ws": "^8.18.0",
+      },
+      "devDependencies": {
+        "@beamhop/acp-p2p-client": "workspace:*",
+        "@beamhop/acp-p2p-server": "workspace:*",
+        "@trystero-p2p/core": "^0.24.0",
+        "@types/bun": "latest",
+        "@types/node": "^22.0.0",
+        "@types/ws": "^8.5.12",
+        "ws": "^8.18.0",
+      },
+      "peerDependencies": {
+        "@trystero-p2p/core": "^0.24.0",
       },
     },
     "packages/acp-server": {
@@ -247,9 +297,15 @@
 
     "@beamhop/acp-client": ["@beamhop/acp-client@workspace:packages/acp-client"],
 
+    "@beamhop/acp-p2p-client": ["@beamhop/acp-p2p-client@workspace:packages/acp-p2p-client"],
+
+    "@beamhop/acp-p2p-server": ["@beamhop/acp-p2p-server@workspace:packages/acp-p2p-server"],
+
     "@beamhop/acp-playground": ["@beamhop/acp-playground@workspace:apps/acp-playground"],
 
     "@beamhop/acp-protocol": ["@beamhop/acp-protocol@workspace:packages/acp-protocol"],
+
+    "@beamhop/acp-relay": ["@beamhop/acp-relay@workspace:packages/acp-relay"],
 
     "@beamhop/acp-server": ["@beamhop/acp-server@workspace:packages/acp-server"],
 
