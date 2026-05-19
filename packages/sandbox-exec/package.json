@@ -1,0 +1,42 @@
+{
+  "name": "@beamhop/sandbox-exec",
+  "version": "0.0.0",
+  "description": "Adapt beambox sandboxes into node-pty / child_process spawn shapes.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beamhop/beamhop.git",
+    "directory": "packages/sandbox-exec"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap --external microsandbox && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "keywords": ["microsandbox", "sandbox", "spawn", "pty", "child_process"],
+  "peerDependencies": {
+    "@beamhop/beambox": "*",
+    "microsandbox": "*"
+  },
+  "devDependencies": {
+    "@beamhop/beambox": "workspace:*",
+    "@beamhop/shell-server": "workspace:*",
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
+    "microsandbox": "*"
+  }
+}

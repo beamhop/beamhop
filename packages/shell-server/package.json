@@ -28,7 +28,7 @@
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap --external 'node-pty' --external 'ws' --external '@trystero-p2p/*' --external '@beamhop/shell-protocol' && bun build ./src/index.ts --outdir ./dist --target node --format cjs --sourcemap --entry-naming '[dir]/[name].cjs' --external 'node-pty' --external 'ws' --external '@trystero-p2p/*' --external '@beamhop/shell-protocol' && bun build ./src/cli.ts --outdir ./dist --target node --format esm --sourcemap --banner '#!/usr/bin/env node' --external 'node-pty' --external 'ws' --external '@trystero-p2p/*' --external '@beamhop/shell-protocol' && tsc --emitDeclarationOnly && chmod +x ./dist/cli.js",
     "typecheck": "tsc --noEmit",
-    "test": "echo '(no tests yet)'",
+    "test": "bun test",
     "clean": "rm -rf dist *.tsbuildinfo",
     "start": "bun src/cli.ts"
   },

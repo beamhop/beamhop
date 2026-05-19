@@ -1,0 +1,96 @@
+@import "tailwindcss";
+@import "@wterm/react/css";
+
+@theme {
+  --color-paper: #f4ead3;
+  --color-paper-deep: #ead8b0;
+  --color-ink: #1a140d;
+  --color-ink-soft: #3a2a1a;
+  --color-amber: #d97706;
+  --color-amber-bright: #f59e0b;
+  --color-amber-glow: #fbbf24;
+  --color-rust: #92400e;
+  --color-moss: #4d5b3a;
+  --color-ash: #6b5d4f;
+
+  --font-display: "IBM Plex Serif", Georgia, serif;
+  --font-body: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
+  --font-terminal: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0.3;
+  mix-blend-mode: multiply;
+  background-image:
+    radial-gradient(rgba(60, 40, 20, 0.16) 1px, transparent 1px),
+    radial-gradient(rgba(60, 40, 20, 0.1) 0.5px, transparent 0.5px);
+  background-size: 3px 3px, 5px 5px;
+  background-position: 0 0, 1.5px 1.5px;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+@keyframes pulse-amber {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.92); }
+}
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+  52% { opacity: 1; }
+}
+.bh-blink { animation: blink 1.05s steps(1, end) infinite; }
+.pulse-amber { animation: pulse-amber 1.4s ease-in-out infinite; }
+.flicker { animation: flicker 4s ease-in-out infinite; }
+
+.wterm.wterm-amber {
+  --term-fg: #f4ead3;
+  --term-bg: #15100a;
+  --term-cursor: #f59e0b;
+  --term-color-0: #1a140d;
+  --term-color-1: #dc2626;
+  --term-color-2: #65a30d;
+  --term-color-3: #f59e0b;
+  --term-color-4: #5b8fb9;
+  --term-color-5: #c4699e;
+  --term-color-6: #7fb2a8;
+  --term-color-7: #f4ead3;
+  --term-color-8: #3a2a1a;
+  --term-color-9: #ef4444;
+  --term-color-10: #a3e635;
+  --term-color-11: #fbbf24;
+  --term-color-12: #7eaad1;
+  --term-color-13: #e0a3c4;
+  --term-color-14: #9ccdc4;
+  --term-color-15: #fefae0;
+  --term-font-family: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+  --term-font-size: 13px;
+  --term-line-height: 1.25;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 12px 14px;
+  background: transparent;
+}
+
+::selection {
+  background: var(--color-amber);
+  color: var(--color-paper);
+}

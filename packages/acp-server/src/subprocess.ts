@@ -1,4 +1,7 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import {
+  spawn as nodeSpawn,
+  type ChildProcessWithoutNullStreams,
+} from "node:child_process";
 import { existsSync } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 import { Readable, Writable } from "node:stream";
@@ -76,11 +79,51 @@ export interface SpawnedAgent {
   kill(signal?: NodeJS.Signals): Promise<void>;
 }
 
+/**
+ * Minimal child-process surface that `spawnAgent` consumes. Defined
+ * structurally so both `node:child_process`'s `ChildProcessWithoutNullStreams`
+ * and `@beamhop/sandbox-exec`'s `SandboxChildProcess` satisfy it — the latter
+ * lets the agent CLI run inside a microsandbox VM instead of on the host.
+ */
+export interface SpawnedChild {
+  readonly pid: number | undefined;
+  readonly exitCode: number | null;
+  readonly signalCode: NodeJS.Signals | null;
+  readonly stdin: import("node:stream").Writable;
+  readonly stdout: import("node:stream").Readable;
+  readonly stderr: import("node:stream").Readable;
+  kill(signal?: NodeJS.Signals | number): boolean;
+  once(event: "spawn", listener: () => void): this;
+  once(event: "error", listener: (err: Error) => void): this;
+  once(
+    event: "exit",
+    listener: (code: number | null, signal: NodeJS.Signals | null) => void,
+  ): this;
+  removeListener(event: "spawn", listener: () => void): this;
+  removeListener(event: "error", listener: (err: Error) => void): this;
+}
+
+export type NodeSpawn = (
+  command: string,
+  args: string[],
+  options: {
+    env?: NodeJS.ProcessEnv;
+    cwd?: string;
+    stdio?: ["pipe", "pipe", "pipe"];
+  },
+) => SpawnedChild;
+
 export interface SpawnAgentOptions {
   definition: AgentDefinition;
   hooks: SubprocessHooks;
   logger: Logger;
   spawnTimeoutMs?: number;
+  /**
+   * Override how child processes are launched. Defaults to
+   * `node:child_process.spawn`. Pass `createChildProcessSpawn(sandbox)` from
+   * `@beamhop/sandbox-exec` to run the agent CLI inside a microsandbox VM.
+   */
+  spawn?: NodeSpawn;
 }
 
 /**
@@ -90,13 +133,11 @@ export interface SpawnAgentOptions {
 export async function spawnAgent(opts: SpawnAgentOptions): Promise<SpawnedAgent> {
   const { definition, hooks, logger } = opts;
   const log = logger.child({ agentId: definition.id, command: definition.command });
+  const spawnFn: NodeSpawn = opts.spawn ?? defaultSpawn;
 
-  // Resolve the command on PATH ourselves before calling spawn(). Bun's
-  // `child_process.spawn` throws synchronously when the binary is missing,
-  // and the test runner prints that trace as an unhandled error even when
-  // we catch it. Doing the lookup ourselves keeps the failure path purely
-  // promise-based.
-  if (!resolveBinary(definition.command, definition.env)) {
+  // PATH-probe only makes sense when launching on the host. Custom spawners
+  // (sandbox-exec, future remote exec) resolve commands in their own world.
+  if (!opts.spawn && !resolveBinary(definition.command, definition.env)) {
     const err = Object.assign(new Error(`binary not found on PATH: ${definition.command}`), {
       code: "ENOENT" as const,
     });
@@ -104,11 +145,11 @@ export async function spawnAgent(opts: SpawnAgentOptions): Promise<SpawnedAgent>
     throw err;
   }
 
-  const child = spawn(definition.command, definition.args, {
+  const child = spawnFn(definition.command, definition.args, {
     env: { ...process.env, ...definition.env },
     cwd: definition.cwd,
     stdio: ["pipe", "pipe", "pipe"],
-  }) as ChildProcessWithoutNullStreams;
+  });
 
   if (child.pid === undefined) {
     // Defensive: spawn() can return without a pid in some edge cases (resource
@@ -325,7 +366,7 @@ export async function spawnAgent(opts: SpawnAgentOptions): Promise<SpawnedAgent>
 }
 
 function onceExit(
-  child: ChildProcessWithoutNullStreams,
+  child: SpawnedChild,
   cb: (code: number | null, signal: NodeJS.Signals | null) => void,
 ): Promise<void> {
   return new Promise((resolve) => {
@@ -349,6 +390,9 @@ async function guard<T>(fn: () => Promise<T>, log: Logger, op: string): Promise<
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+const defaultSpawn: NodeSpawn = (cmd, args, options) =>
+  nodeSpawn(cmd, args, options) as unknown as SpawnedChild;
 
 function resolveBinary(command: string, extraEnv?: NodeJS.ProcessEnv): string | null {
   if (isAbsolute(command)) return existsSync(command) ? command : null;

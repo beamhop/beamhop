@@ -3,7 +3,7 @@ import {
   encodeControl,
   type ControlMessage,
 } from "@beamhop/shell-protocol";
-import type { ShellConnection, WsConnectOptions } from "./types.js";
+import type { HolderState, ShellConnection, WsConnectOptions } from "./types.js";
 
 export async function connectWs(
   opts: WsConnectOptions,
@@ -91,8 +91,14 @@ export async function connectWs(
     }
   });
 
+  // WS is single-peer — no arbitration. Provide a stable, inert holder so
+  // consumers don't have to special-case transport.
+  const holder: HolderState = { peerId: null, ttlMs: 0 };
+
   return {
     transport: "ws",
+    selfPeerId: "",
+    holder,
     get sessionId() {
       return sessionId;
     },
@@ -120,6 +126,10 @@ export async function connectWs(
     onData(cb) {
       dataSubs.add(cb);
       return () => dataSubs.delete(cb);
+    },
+    onHolder() {
+      // WS transport never emits a holder change; return a no-op unsubscribe.
+      return () => {};
     },
     onClose(cb) {
       closeSubs.add(cb);

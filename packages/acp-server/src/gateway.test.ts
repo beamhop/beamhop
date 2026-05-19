@@ -664,6 +664,122 @@ describe("gateway end-to-end via fake-agent.ts subprocess", () => {
     ws.close();
   }, 20_000);
 
+  test("session-new spawns a second agent slot and routes prompts by sessionKey", async () => {
+    handle = await serveAcp({
+      port: 0,
+      agents: {
+        "fake-normal": makeAgent("fake-normal", "normal"),
+        "fake-other": makeAgent("fake-other", "normal"),
+      },
+      auth: { mode: "token", token: "tok" },
+    });
+    const ws = await openClient("fake-normal", "tok", handle.port);
+    await waitFor(ws, "ready");
+
+    // Open a brand-new session inside the same connection, pointing at a
+    // different agent. The primary slot must remain alive — this is the
+    // "pick agent → new session, same sandbox" contract.
+    ws.send(
+      encode({
+        kind: "session-new",
+        payload: { sessionKey: "tab-2", agentId: "fake-other", label: "second" },
+      }),
+    );
+    const result = await waitFor(ws, "session-new-result", 8000);
+    expect(result.payload.sessionKey).toBe("tab-2");
+    if (!result.payload.ok) {
+      throw new Error(`session-new failed: ${result.payload.error.message}`);
+    }
+    expect(result.payload.agentId).toBe("fake-other");
+    expect(typeof result.payload.agentSessionId).toBe("string");
+
+    // A prompt targeted at the secondary slot must come back with sessionKey
+    // stamped on every routed frame so the client can demultiplex.
+    ws.send(
+      encode({
+        kind: "rpc",
+        sessionKey: "tab-2",
+        payload: {
+          direction: "c2a",
+          id: 200,
+          method: "session/prompt",
+          params: { prompt: [{ type: "text", text: "hi" }] },
+        },
+      }),
+    );
+
+    const update = await waitFor(ws, "notify", 5000);
+    expect(update.sessionKey).toBe("tab-2");
+    expect(update.payload.method).toBe("session/update");
+
+    const promptResult = await waitFor(ws, "rpc-result", 5000);
+    expect(promptResult.sessionKey).toBe("tab-2");
+    expect(promptResult.payload.id).toBe(200);
+    expect(promptResult.payload.result).toMatchObject({ stopReason: "end_turn" });
+
+    // The primary slot must still be usable — its frames carry NO sessionKey
+    // (back-compat with single-session clients).
+    ws.send(
+      encode({
+        kind: "rpc",
+        payload: {
+          direction: "c2a",
+          id: 201,
+          method: "session/prompt",
+          params: { prompt: [{ type: "text", text: "still here?" }] },
+        },
+      }),
+    );
+    const primaryNotify = await waitFor(ws, "notify", 5000);
+    expect(primaryNotify.sessionKey).toBeUndefined();
+    const primaryResult = await waitFor(ws, "rpc-result", 5000);
+    expect(primaryResult.sessionKey).toBeUndefined();
+    expect(primaryResult.payload.id).toBe(201);
+
+    // Closing the secondary slot returns no result/error — just tear down.
+    ws.send(encode({ kind: "session-close", sessionKey: "tab-2", reason: "user" }));
+
+    ws.close();
+  }, 20_000);
+
+  test("session-new with an unknown agent rejects only that slot (primary keeps running)", async () => {
+    handle = await serveAcp({
+      port: 0,
+      agents: { "fake-normal": makeAgent("fake-normal", "normal") },
+      auth: { mode: "token", token: "tok" },
+    });
+    const ws = await openClient("fake-normal", "tok", handle.port);
+    await waitFor(ws, "ready");
+
+    ws.send(
+      encode({
+        kind: "session-new",
+        payload: { sessionKey: "ghost", agentId: "does-not-exist" },
+      }),
+    );
+    const result = await waitFor(ws, "session-new-result", 5000);
+    expect(result.payload.sessionKey).toBe("ghost");
+    expect(result.payload.ok).toBe(false);
+    if (result.payload.ok) throw new Error("expected failure");
+    expect(result.payload.error.code).toBe("agent_not_registered");
+
+    // Primary is still alive — prompt it.
+    ws.send(
+      encode({
+        kind: "rpc",
+        payload: {
+          direction: "c2a",
+          id: 1,
+          method: "session/prompt",
+          params: { prompt: [{ type: "text", text: "hi" }] },
+        },
+      }),
+    );
+    const r = await waitFor(ws, "rpc-result", 5000);
+    expect(r.payload.id).toBe(1);
+    ws.close();
+  }, 15_000);
+
   test("login-start for acp_native agent returns not_implemented hint", async () => {
     handle = await serveAcp({
       port: 0,

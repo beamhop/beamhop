@@ -5,6 +5,9 @@ export {
   ImageNotFoundError,
   SandboxExitError,
   ensureRuntime,
+  listImages,
+  removeImage,
+  resolveImage,
 } from "./image-builder.js";
 export type { OneShotOptions } from "./image-builder.js";
 export { parseDockerfile, DockerfileParseError } from "./dockerfile-parser.js";

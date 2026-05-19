@@ -5,7 +5,11 @@ import {
   type StrategyOptions,
 } from "@beamhop/shell-protocol";
 import { joinStrategyRoom } from "./resolve-strategy.js";
-import type { ShellConnection, P2PConnectOptions } from "./types.js";
+import type {
+  HolderState,
+  P2PConnectOptions,
+  ShellConnection,
+} from "./types.js";
 
 export async function connectP2P(
   opts: P2PConnectOptions,
@@ -32,15 +36,18 @@ export async function connectP2P(
   const [sendCtl, onCtl] = room.makeAction<string>("ctl");
 
   const dataSubs = new Set<(b: Uint8Array) => void>();
+  const holderSubs = new Set<(s: HolderState) => void>();
   const closeSubs = new Set<
     (reason?: { code: string; message: string }) => void
   >();
   let sessionId = "";
+  let selfPeerId = "";
   let cols = opts.cols;
   let rows = opts.rows;
   let hostPeer = opts.hostPeerId ?? "";
   let lastError: { code: string; message: string } | undefined;
   let closed = false;
+  const holder: HolderState = { peerId: null, ttlMs: 0 };
 
   const abortHandler = () => doClose();
   opts.signal?.addEventListener("abort", abortHandler);
@@ -53,16 +60,27 @@ export async function connectP2P(
     for (const cb of closeSubs) cb(lastError);
   };
 
+  // Resolve once trystero has actually seen our target host peer arrive in
+  // the room. If `hostPeer` was pre-seeded from the invite, we still wait
+  // until trystero confirms the peer is connected — otherwise the auth ctl
+  // would be sent before there's a route to deliver it on.
+  const expectedHost = hostPeer;
   const hostJoined = new Promise<string>((resolve, reject) => {
-    if (hostPeer) {
-      resolve(hostPeer);
-      return;
-    }
     const timeout = setTimeout(
       () => reject(new Error("no host peer joined in time")),
       opts.waitForHostMs ?? 15000,
     );
     room.onPeerJoin((peerId) => {
+      if (expectedHost) {
+        // Only accept the specific host the invite told us about.
+        if (peerId === expectedHost) {
+          hostPeer = peerId;
+          clearTimeout(timeout);
+          resolve(peerId);
+        }
+        return;
+      }
+      // No host id known up front — first peer in wins (back-compat).
       if (!hostPeer) {
         hostPeer = peerId;
         clearTimeout(timeout);
@@ -94,7 +112,12 @@ export async function connectP2P(
         sessionId = msg.sessionId;
         cols = msg.cols;
         rows = msg.rows;
+        if (msg.selfPeerId) selfPeerId = msg.selfPeerId;
         resolve();
+      } else if (msg.type === "holder") {
+        holder.peerId = msg.peerId;
+        holder.ttlMs = msg.ttlMs;
+        for (const cb of holderSubs) cb({ peerId: msg.peerId, ttlMs: msg.ttlMs });
       } else if (msg.type === "error") {
         lastError = { code: msg.code, message: msg.message };
         reject(new Error(`${msg.code}: ${msg.message}`));
@@ -119,6 +142,10 @@ export async function connectP2P(
     get sessionId() {
       return sessionId;
     },
+    get selfPeerId() {
+      return selfPeerId;
+    },
+    holder,
     get cols() {
       return cols;
     },
@@ -140,6 +167,10 @@ export async function connectP2P(
     onData(cb) {
       dataSubs.add(cb);
       return () => dataSubs.delete(cb);
+    },
+    onHolder(cb) {
+      holderSubs.add(cb);
+      return () => holderSubs.delete(cb);
     },
     onClose(cb) {
       closeSubs.add(cb);

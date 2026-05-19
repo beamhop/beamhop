@@ -717,3 +717,217 @@ describe("startLogin() PTY stream", () => {
     expect(exit.reason).toBe("cancelled");
   });
 });
+
+describe("multi-session newSession() handles", () => {
+  test("session-new round-trips and exposes a SessionHandle bound to its sessionKey", async () => {
+    const { session, ws } = await openSession();
+    ws.sent.length = 0; // clear hello
+
+    const promise = session.newSession({ agentId: "gemini", label: "tab two" });
+
+    // The client should have issued a session-new frame with a client-chosen key.
+    const sent = ws.sent.map((s) => decode(s));
+    const newFrame = sent.find((f) => f.kind === "session-new") as Extract<
+      WireMessage,
+      { kind: "session-new" }
+    >;
+    expect(newFrame).toBeDefined();
+    expect(newFrame.payload.agentId).toBe("gemini");
+    expect(newFrame.payload.label).toBe("tab two");
+    const sessionKey = newFrame.payload.sessionKey;
+    expect(typeof sessionKey).toBe("string");
+    expect(sessionKey.length).toBeGreaterThan(0);
+
+    // Server replies with success.
+    ws.fakeServerFrame(
+      encode({
+        kind: "session-new-result",
+        payload: {
+          sessionKey,
+          ok: true,
+          agentId: "gemini",
+          agentSessionId: "gemini-1",
+          modelCatalog: null,
+        },
+      }),
+    );
+
+    const handle = await promise;
+    expect(handle.key).toBe(sessionKey);
+    expect(handle.agentId).toBe("gemini");
+    expect(handle.agentSessionId).toBe("gemini-1");
+    expect(handle.label).toBe("tab two");
+    // Primary state is untouched.
+    expect(session.agentId).toBe("claude-code");
+  });
+
+  test("a failure response rejects newSession() without affecting the primary handle", async () => {
+    const { session, ws } = await openSession();
+    ws.sent.length = 0;
+
+    const promise = session.newSession({ agentId: "gemini" });
+    const sent = ws.sent.map((s) => decode(s));
+    const newFrame = sent.find((f) => f.kind === "session-new") as Extract<
+      WireMessage,
+      { kind: "session-new" }
+    >;
+    const sessionKey = newFrame.payload.sessionKey;
+
+    ws.fakeServerFrame(
+      encode({
+        kind: "session-new-result",
+        payload: {
+          sessionKey,
+          ok: false,
+          error: { code: "agent_not_installed", message: "gemini missing" },
+        },
+      }),
+    );
+
+    await expect(promise).rejects.toMatchObject({
+      code: "agent_not_installed",
+      message: "gemini missing",
+    });
+    // Primary still ready.
+    expect(session.agentId).toBe("claude-code");
+  });
+
+  test("handle.prompt() stamps sessionKey on outbound rpc and routes notify back by key", async () => {
+    const { session, ws } = await openSession();
+    ws.sent.length = 0;
+
+    const newPromise = session.newSession({ agentId: "gemini" });
+    const sent = ws.sent.map((s) => decode(s));
+    const newFrame = sent.find((f) => f.kind === "session-new") as Extract<
+      WireMessage,
+      { kind: "session-new" }
+    >;
+    const sessionKey = newFrame.payload.sessionKey;
+    ws.fakeServerFrame(
+      encode({
+        kind: "session-new-result",
+        payload: {
+          sessionKey,
+          ok: true,
+          agentId: "gemini",
+          agentSessionId: "gemini-1",
+          modelCatalog: null,
+        },
+      }),
+    );
+    const handle = await newPromise;
+
+    ws.sent.length = 0;
+    const stream = handle.prompt("ping");
+    const promptFrame = decode(ws.sent[0]!) as Extract<WireMessage, { kind: "rpc" }>;
+    expect(promptFrame.kind).toBe("rpc");
+    expect(promptFrame.sessionKey).toBe(sessionKey);
+    expect(promptFrame.payload.method).toBe("session/prompt");
+    const rpcId = promptFrame.payload.id;
+
+    // Notify update keyed to the handle should land on the handle's stream.
+    ws.fakeServerFrame(
+      encode({
+        kind: "notify",
+        sessionKey,
+        payload: {
+          direction: "a2c",
+          method: "session/update",
+          params: {
+            sessionId: "gemini-1",
+            update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "hi" } },
+          },
+        },
+      }),
+    );
+    // Reply with rpc-result also keyed to the handle.
+    ws.fakeServerFrame(
+      encode({
+        kind: "rpc-result",
+        sessionKey,
+        payload: { id: rpcId, result: { stopReason: "end_turn" } },
+      }),
+    );
+
+    const updates: unknown[] = [];
+    for await (const u of stream) updates.push(u);
+    const result = (await stream.result) as { stopReason: string };
+    expect(updates.length).toBe(1);
+    expect(result.stopReason).toBe("end_turn");
+  });
+
+  test("the primary session.prompt() continues to work alongside an open secondary handle", async () => {
+    const { session, ws } = await openSession();
+
+    // Open a secondary handle.
+    const newPromise = session.newSession({ agentId: "gemini" });
+    const sent1 = ws.sent.map((s) => decode(s));
+    const newFrame = sent1.find((f) => f.kind === "session-new") as Extract<
+      WireMessage,
+      { kind: "session-new" }
+    >;
+    const secondaryKey = newFrame.payload.sessionKey;
+    ws.fakeServerFrame(
+      encode({
+        kind: "session-new-result",
+        payload: {
+          sessionKey: secondaryKey,
+          ok: true,
+          agentId: "gemini",
+          agentSessionId: "gemini-1",
+          modelCatalog: null,
+        },
+      }),
+    );
+    await newPromise;
+
+    ws.sent.length = 0;
+    const stream = session.prompt("hi");
+    const primaryFrame = decode(ws.sent[0]!) as Extract<WireMessage, { kind: "rpc" }>;
+    // Primary frame must NOT carry sessionKey (back-compat with single-session servers).
+    expect(primaryFrame.sessionKey).toBeUndefined();
+    const id = primaryFrame.payload.id;
+    ws.fakeServerFrame(
+      encode({ kind: "rpc-result", payload: { id, result: { stopReason: "end_turn" } } }),
+    );
+    const result = (await stream.result) as { stopReason: string };
+    expect(result.stopReason).toBe("end_turn");
+  });
+
+  test("handle.close() sends session-close and rejects any in-flight prompt on the handle", async () => {
+    const { session, ws } = await openSession();
+
+    const newPromise = session.newSession({ agentId: "gemini" });
+    const sent1 = ws.sent.map((s) => decode(s));
+    const newFrame = sent1.find((f) => f.kind === "session-new") as Extract<
+      WireMessage,
+      { kind: "session-new" }
+    >;
+    const sessionKey = newFrame.payload.sessionKey;
+    ws.fakeServerFrame(
+      encode({
+        kind: "session-new-result",
+        payload: {
+          sessionKey,
+          ok: true,
+          agentId: "gemini",
+          agentSessionId: "gemini-1",
+          modelCatalog: null,
+        },
+      }),
+    );
+    const handle = await newPromise;
+
+    const stream = handle.prompt("never finishes");
+    const result = stream.result;
+    ws.sent.length = 0;
+    await handle.close("user_closed");
+    const closeFrame = decode(ws.sent[0]!) as Extract<WireMessage, { kind: "session-close" }>;
+    expect(closeFrame.kind).toBe("session-close");
+    expect(closeFrame.sessionKey).toBe(sessionKey);
+    expect(closeFrame.reason).toBe("user_closed");
+    // The in-flight prompt should have been rejected by the local cleanup so
+    // the caller doesn't hang forever waiting on a server that's gone.
+    await expect(result).rejects.toMatchObject({ code: "session_idle_timeout" });
+  });
+});

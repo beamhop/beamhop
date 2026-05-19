@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { Sandbox, install as installRuntime, isInstalled } from "microsandbox";
+import { Image, Sandbox, Snapshot, install as installRuntime, isInstalled } from "microsandbox";
 import type { ExecOutput } from "microsandbox";
 import { parseDockerfile } from "./dockerfile-parser.js";
 import type {
@@ -17,6 +17,22 @@ import type {
 } from "./types.js";
 
 const METADATA_DIR = path.join(os.homedir(), ".microsandbox", "images");
+const SNAPSHOT_DIR = path.join(os.homedir(), ".microsandbox", "snapshots");
+
+/**
+ * Check whether the on-disk snapshot artifact for `snapshotName` still
+ * exists. Microsandbox can GC snapshots out from under us; the metadata
+ * file we own under METADATA_DIR can outlive the snapshot, so cache-hit
+ * decisions need to verify both.
+ */
+async function snapshotArtifactExists(snapshotName: string): Promise<boolean> {
+  try {
+    await fs.access(path.join(SNAPSHOT_DIR, snapshotName));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export class SandboxImage {
   private readonly steps: BuildStep[] = [];
@@ -118,9 +134,35 @@ export class SandboxImage {
 
     if (!options.noCache) {
       const cached = await loadMetadata(snapshotName).catch(() => null);
-      if (cached) {
+      if (cached && (await snapshotArtifactExists(snapshotName))) {
         log(options, `cache hit: ${snapshotName}`);
-        return new ImageRef(cached);
+        // Refresh createdAt and the user-facing tag so `resolveImage(tag)`'s
+        // newest-wins tiebreak lands on the snapshot the caller just asked
+        // for. Without this, iterating on a Dockerfile under a stable tag
+        // can resurrect an older snapshot whose content differs.
+        //
+        // Also backfill base-image env if the cached metadata predates env
+        // merging — old snapshots have an empty env even though the OCI
+        // image config defines PATH etc. Dockerfile env still wins.
+        const baseConfig = await inspectImageConfig(cached.baseImage);
+        const refreshed: ImageMetadata = {
+          ...cached,
+          tag,
+          env: { ...baseConfig.env, ...cached.env },
+          createdAt: new Date().toISOString(),
+        };
+        await saveMetadata(refreshed);
+        return new ImageRef(refreshed);
+      }
+      if (cached) {
+        // Metadata exists but the snapshot artifact is gone — orphan from
+        // microsandbox GC, manual `msb snapshot rm`, or a previous failed
+        // build. Drop the stale metadata so we don't keep cache-hitting on
+        // a ghost, then fall through to rebuild.
+        log(options, `cache miss: ${snapshotName} (metadata orphan, rebuilding)`);
+        await fs
+          .unlink(path.join(METADATA_DIR, `${snapshotName}.json`))
+          .catch(() => {});
       }
     }
 
@@ -129,15 +171,27 @@ export class SandboxImage {
     const tempName = `msb-build-${randomId()}`;
     const baseImage = (this.steps[0] as { kind: "FROM"; image: string }).image;
 
-    const env: Record<string, string> = {};
-    let workdir: string | null = null;
-    let userCtx: string | null = null;
-    let entrypoint: string[] | null = null;
-    let cmd: string[] | null = null;
-
+    // Default to 1024 MiB at build time so package installers (bun, npm,
+    // apt) don't get OOM-killed mid-resolution. Callers can override.
+    const buildMemory = options.memory ?? 1024;
     let sandbox: Sandbox | null = null;
     try {
-      sandbox = await Sandbox.builder(tempName).image(baseImage).create();
+      sandbox = await Sandbox.builder(tempName)
+        .image(baseImage)
+        .memory(buildMemory)
+        .create();
+
+      // Seed env/workdir/etc from the base image's OCI config so terminals
+      // spawned later see the right PATH (`oven/bun` puts `bun` at
+      // /usr/local/bin, etc.) without the user having to redeclare it.
+      // Done AFTER .create() so the image is guaranteed to be pulled and
+      // inspectable. Dockerfile directives below still override.
+      const baseConfig = await inspectImageConfig(baseImage);
+      const env: Record<string, string> = { ...baseConfig.env };
+      let workdir: string | null = baseConfig.workdir;
+      let userCtx: string | null = baseConfig.user;
+      let entrypoint: string[] | null = baseConfig.entrypoint;
+      let cmd: string[] | null = baseConfig.cmd;
 
       for (const step of this.steps.slice(1)) {
         switch (step.kind) {
@@ -168,6 +222,9 @@ export class SandboxImage {
         }
       }
 
+      // Fence: flush guest dirty pages into the upper layer before the VM
+      // halts. Without this, snapshot() captures the pre-build base image.
+      await flushGuestFs(sandbox);
       await sandbox.stopAndWait();
       sandbox = null;
 
@@ -176,6 +233,7 @@ export class SandboxImage {
 
       const metadata: ImageMetadata = {
         snapshotName,
+        tag,
         digest,
         baseImage,
         env,
@@ -465,6 +523,50 @@ export async function ensureRuntime(opts: { quiet?: boolean } = {}): Promise<voi
 
 // --- internals ---
 
+interface BaseImageConfig {
+  env: Record<string, string>;
+  workdir: string | null;
+  user: string | null;
+  entrypoint: string[] | null;
+  cmd: string[] | null;
+}
+
+/**
+ * Read the OCI config of `reference` from microsandbox's image cache and
+ * coerce it into the shape we persist in `ImageMetadata`. Returns empty
+ * defaults if inspect fails — base-image config is a quality-of-life
+ * signal, not load-bearing for the build itself.
+ */
+async function inspectImageConfig(reference: string): Promise<BaseImageConfig> {
+  const empty: BaseImageConfig = {
+    env: {},
+    workdir: null,
+    user: null,
+    entrypoint: null,
+    cmd: null,
+  };
+  try {
+    const detail = await Image.inspect(reference);
+    const cfg = detail.config;
+    if (!cfg) return empty;
+    const env: Record<string, string> = {};
+    for (const entry of cfg.env) {
+      const eq = entry.indexOf("=");
+      if (eq <= 0) continue;
+      env[entry.slice(0, eq)] = entry.slice(eq + 1);
+    }
+    return {
+      env,
+      workdir: cfg.workingDir || null,
+      user: cfg.user || null,
+      entrypoint: cfg.entrypoint ? [...cfg.entrypoint] : null,
+      cmd: cfg.cmd ? [...cfg.cmd] : null,
+    };
+  } catch {
+    return empty;
+  }
+}
+
 async function runStep(
   sandbox: Sandbox,
   command: string,
@@ -483,6 +585,35 @@ async function runStep(
     const stderr = result.stderr();
     const stdout = result.stdout();
     throw new BuildStepError(command, result.code, stdout, stderr);
+  }
+}
+
+/**
+ * Flush the guest's filesystem before `stopAndWait()` halts the VM.
+ *
+ * Microsandbox `stopAndWait()` doesn't fsync the upper layer when it
+ * stops, so any writes from RUN/COPY/ADD steps that are still in the
+ * guest's page cache vanish — the snapshot picks up the pre-write
+ * state. Running `sync` from inside the guest is the only reliable
+ * way to force those dirty pages onto the upper before the VM
+ * stops. One fence right before stop catches everything from every
+ * preceding step.
+ *
+ * Best-effort: if `sync` itself fails (e.g. broken base image), we
+ * surface a warning but don't abort the build — the snapshot may be
+ * stale, but the caller still gets actionable output.
+ */
+async function flushGuestFs(sandbox: Sandbox): Promise<void> {
+  const result = await sandbox.exec("sync", []).catch((err) => ({
+    code: -1,
+    stderr: () => String(err),
+    stdout: () => "",
+  }));
+  if (result.code !== 0) {
+    console.warn(
+      "[beambox] guest filesystem sync failed (snapshot may be stale):",
+      result.stderr(),
+    );
   }
 }
 
@@ -608,6 +739,123 @@ async function loadMetadata(
 }
 
 /**
+ * Delete a locally-built image: remove its snapshot artifact (via
+ * `Snapshot.remove(name, { force: true })`) and its metadata file. Safe to
+ * call for unknown names — missing files are ignored.
+ */
+export async function removeImage(
+  snapshotName: string,
+  dir: string = METADATA_DIR,
+): Promise<void> {
+  try {
+    await Snapshot.remove(snapshotName, { force: true });
+  } catch {
+    // snapshot may already be gone; the metadata file is still removed below
+  }
+  const file = path.join(dir, `${snapshotName}.json`);
+  await fs.unlink(file).catch(() => {});
+}
+
+/**
+ * List every locally-available image, newest first.
+ *
+ * Two sources are merged:
+ *   1. `METADATA_DIR` — JSON files we write at build time. These carry full
+ *      provenance (tag, digest, baseImage, env, entrypoint, ...).
+ *   2. `SNAPSHOT_DIR` — the raw snapshot artifacts microsandbox stores.
+ *      Snapshots that have no matching JSON (e.g. built directly via the
+ *      `msb` CLI, restored from a backup, imported by hand) get a synthesised
+ *      stub so they still surface in tooling. The stub flags itself with
+ *      `baseImage: "unknown"` and a digest of `""` — callers that need the
+ *      full metadata must look it up explicitly via `resolveImage`.
+ *
+ * Returns `[]` when neither directory exists. The `metadataDir` /
+ * `snapshotDir` args are exposed for tests; production callers use the defaults.
+ */
+export async function listImages(
+  metadataDir: string = METADATA_DIR,
+  snapshotDir: string = SNAPSHOT_DIR,
+): Promise<ImageMetadata[]> {
+  // 1) Metadata-tracked images.
+  const tracked: ImageMetadata[] = [];
+  const trackedNames = new Set<string>();
+  try {
+    const entries = await fs.readdir(metadataDir);
+    const jsonFiles = entries.filter((n) => n.endsWith(".json"));
+    const metas = await Promise.all(
+      jsonFiles.map((name) =>
+        loadMetadata(name.replace(/\.json$/, ""), metadataDir).catch(() => null),
+      ),
+    );
+    for (const m of metas) {
+      if (m === null) continue;
+      tracked.push(m);
+      trackedNames.add(m.snapshotName);
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    // metadataDir missing is fine — we may still find orphans below.
+  }
+
+  // 2) Orphan snapshots — present on disk but with no metadata file.
+  const orphans: ImageMetadata[] = [];
+  try {
+    const snapEntries = await fs.readdir(snapshotDir, { withFileTypes: true });
+    for (const ent of snapEntries) {
+      // Snapshot entries are either files or directories depending on the
+      // microsandbox version; both shapes are valid. Skip dotfiles
+      // (e.g. .DS_Store) so we don't synthesise junk entries.
+      if (ent.name.startsWith(".")) continue;
+      if (trackedNames.has(ent.name)) continue;
+      orphans.push(await synthesizeOrphanMetadata(ent.name, snapshotDir));
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+
+  return [...tracked, ...orphans].sort((a, b) =>
+    a.createdAt < b.createdAt ? 1 : -1,
+  );
+}
+
+/**
+ * Build a placeholder `ImageMetadata` for a snapshot we know exists on disk
+ * but have no record of. We can't recover the original Dockerfile or env, so
+ * fields like `digest`/`entrypoint`/`cmd` are intentionally blank/null — the
+ * caller can still launch the snapshot by name, and the desktop UI can
+ * render it. The tag is taken as everything before a trailing `-<12 hex>`
+ * suffix if present; otherwise the full name (matches the same projection
+ * the sidecar applies to old-format tracked entries).
+ */
+async function synthesizeOrphanMetadata(
+  snapshotName: string,
+  snapshotDir: string,
+): Promise<ImageMetadata> {
+  const m = /-([a-f0-9]{12})$/.exec(snapshotName);
+  const tag = m ? snapshotName.slice(0, -m[0].length) : snapshotName;
+  const digest = m ? m[1]! : "";
+  let createdAt = new Date().toISOString();
+  try {
+    const st = await fs.stat(path.join(snapshotDir, snapshotName));
+    createdAt = new Date(st.mtimeMs).toISOString();
+  } catch {
+    // Snapshot vanished between readdir and stat — fall back to "now".
+  }
+  return {
+    snapshotName,
+    tag,
+    digest,
+    baseImage: "unknown",
+    env: {},
+    workdir: null,
+    user: null,
+    entrypoint: null,
+    cmd: null,
+    createdAt,
+  };
+}
+
+/**
  * Resolve a tag or exact snapshot name to its metadata. The `dir` arg is
  * exposed for tests; production callers use the default.
  */
@@ -615,11 +863,21 @@ export async function resolveImage(
   nameOrTag: string,
   dir: string = METADATA_DIR,
 ): Promise<ImageMetadata> {
+  // Only enforce snapshot-artifact existence when using the real metadata
+  // dir. Tests pass synthetic dirs without a corresponding snapshots tree.
+  const checkArtifact = dir === METADATA_DIR;
+
   const exact = await loadMetadata(nameOrTag, dir).catch((err) => {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw err;
   });
-  if (exact) return exact;
+  if (exact) {
+    if (!checkArtifact || (await snapshotArtifactExists(exact.snapshotName))) {
+      return exact;
+    }
+    // Orphan metadata — fall through to the tag-prefix scan in case
+    // another snapshot under the same tag is still healthy.
+  }
 
   let entries: string[];
   try {
@@ -641,7 +899,14 @@ export async function resolveImage(
     candidates.map((name) => loadMetadata(name.replace(/\.json$/, ""), dir)),
   );
   metas.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  return metas[0]!;
+  if (!checkArtifact) return metas[0]!;
+
+  // Pick the newest snapshot whose on-disk artifact still exists. If all
+  // metadata is orphan, treat the tag as unresolvable.
+  for (const meta of metas) {
+    if (await snapshotArtifactExists(meta.snapshotName)) return meta;
+  }
+  throw new ImageNotFoundError(nameOrTag, candidates);
 }
 
 function sanitizeTag(tag: string): string {

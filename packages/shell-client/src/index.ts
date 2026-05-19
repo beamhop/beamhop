@@ -7,6 +7,7 @@ export type {
   WsConnectOptions,
   P2PConnectOptions,
   TransportName,
+  HolderState,
   StrategyOptions,
   StrategyName,
 } from "./types.js";

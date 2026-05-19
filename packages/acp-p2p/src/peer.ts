@@ -73,6 +73,14 @@ function trysteroTransport(room: Room): Transport & { onPeerPresence: (cb: (kind
   const closeHandlers: Array<(info: { code: number; reason: string }) => void> = [];
   const errorHandlers: Array<(err: Error) => void> = [];
   const presenceHandlers: Array<(kind: "join" | "leave", peerId: string) => void> = [];
+  const knownPeers = new Set<string>();
+  // Resolved by the first peer that joins. Lets `open()` block until trystero
+  // has at least one route established — otherwise the first frame we send
+  // (typically the `hello`) gets dropped before any peer is reachable.
+  let resolveFirstPeer: (() => void) | null = null;
+  const firstPeerSeen = new Promise<void>((resolve) => {
+    resolveFirstPeer = resolve;
+  });
 
   onFrame((data) => {
     if (typeof data !== "string") return;
@@ -86,9 +94,15 @@ function trysteroTransport(room: Room): Transport & { onPeerPresence: (cb: (kind
   });
 
   room.onPeerJoin((peerId) => {
+    knownPeers.add(peerId);
+    if (resolveFirstPeer) {
+      resolveFirstPeer();
+      resolveFirstPeer = null;
+    }
     for (const h of presenceHandlers) h("join", peerId);
   });
   room.onPeerLeave((peerId) => {
+    knownPeers.delete(peerId);
     for (const h of presenceHandlers) h("leave", peerId);
   });
 
@@ -97,7 +111,11 @@ function trysteroTransport(room: Room): Transport & { onPeerPresence: (cb: (kind
   return {
     capabilities,
     async open() {
-      // Trystero rooms are ready to send the moment joinRoom returns.
+      // Wait for at least one peer (the host) to actually be reachable before
+      // letting Session.openAndAwaitReady() send its hello. Trystero will
+      // silently drop pre-discovery sends, which would otherwise turn into a
+      // confusing ready-timeout downstream.
+      if (knownPeers.size === 0) await firstPeerSeen;
     },
     send(frame: string) {
       void sendFrame(frame);

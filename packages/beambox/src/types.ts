@@ -11,6 +11,12 @@ export type BuildStep =
 
 export interface ImageMetadata {
   snapshotName: string;
+  /**
+   * The tag the user passed to `.build(tag, ...)`, verbatim. Distinct from
+   * `snapshotName`, which is sanitized + content-addressed. Optional for
+   * back-compat with metadata files written before this field existed.
+   */
+  tag?: string;
   digest: string;
   baseImage: string;
   env: Record<string, string>;
@@ -28,6 +34,15 @@ export interface BuildOptions {
   noCache?: boolean;
   /** Suppress progress logs. */
   quiet?: boolean;
+  /**
+   * Build-time guest memory in MiB. Defaults to 1024.
+   *
+   * microsandbox's built-in default (~256 MiB) is enough for simple shell
+   * steps but OOM-kills modern installers — `bun install`, `npm install`,
+   * `apt-get install`, `pip install` — during dep resolution. Failure
+   * surfaces as `exit 137` (SIGKILL) with no other diagnostic.
+   */
+  memory?: number;
   /**
    * Skip the embedded runtime install check. Use this if you manage
    * the microsandbox runtime out-of-band (e.g. system-wide install

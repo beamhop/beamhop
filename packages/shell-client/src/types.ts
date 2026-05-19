@@ -2,14 +2,26 @@ import type { StrategyOptions } from "@beamhop/shell-protocol";
 
 export type TransportName = "ws" | "p2p";
 
+export interface HolderState {
+  /** Peer ID currently holding the soft input lock, or null when no one is. */
+  peerId: string | null;
+  /** Hold TTL in milliseconds (so the UI can render a countdown). */
+  ttlMs: number;
+}
+
 export interface ShellConnection {
   readonly transport: TransportName;
   readonly sessionId: string;
   readonly cols: number;
   readonly rows: number;
+  /** This connection's own peer ID — empty on WS, present on P2P. */
+  readonly selfPeerId: string;
+  /** Latest holder broadcast, or `{ peerId: null, ttlMs: 0 }` before first announcement. */
+  readonly holder: HolderState;
   write(data: string | Uint8Array): void;
   resize(cols: number, rows: number): void;
   onData(cb: (data: Uint8Array) => void): () => void;
+  onHolder(cb: (state: HolderState) => void): () => void;
   onClose(cb: (reason?: { code: string; message: string }) => void): () => void;
   close(): void;
 }

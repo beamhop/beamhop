@@ -1,3 +1,0 @@
-# Bun fullstack dev: enable HTML imports + tailwind plugin via the bundler.
-[serve.static]
-plugins = ["bun-plugin-tailwind"]

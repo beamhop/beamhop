@@ -9,6 +9,7 @@ import {
   type Model,
   type ModelCatalog,
   type ReadyPayload,
+  type SessionKey,
   type WireError,
   type WireMessage,
 } from "@beamhop/acp-protocol";
@@ -43,7 +44,11 @@ import {
   type AgentDefinition,
   type AgentRegistry,
 } from "./registry.js";
-import { spawnAgent, type SpawnedAgent } from "./subprocess.js";
+import {
+  spawnAgent,
+  type NodeSpawn,
+  type SpawnedAgent,
+} from "./subprocess.js";
 
 // ---------- Public types ----------
 
@@ -111,6 +116,12 @@ export interface CreateAcpGatewayOptions {
   limits?: LimitsConfig;
   logger?: Logger;
   onEvent?: (e: GatewayEvent) => void;
+  /**
+   * Override how agent CLIs are launched. Defaults to `node:child_process.spawn`
+   * (host machine). Pass `createChildProcessSpawn(sandbox)` from
+   * `@beamhop/sandbox-exec` to run agents inside a microsandbox VM.
+   */
+  spawn?: NodeSpawn;
 }
 
 export interface AcpGateway {
@@ -194,6 +205,7 @@ export function createAcpGateway(opts: CreateAcpGatewayOptions = {}): AcpGateway
       limits,
       logger,
       emit,
+      spawn: opts.spawn,
     });
     sessions.add(ctx);
     ctx.start().catch((err) => {
@@ -235,37 +247,51 @@ interface SessionContextInit {
   };
   logger: Logger;
   emit: (e: GatewayEvent) => void;
+  /** Custom spawner for agent CLIs (e.g. sandbox-exec). Optional. */
+  spawn?: NodeSpawn;
+}
+
+/**
+ * One agent subprocess + its ACP session, scoped to a routing `sessionKey`.
+ *
+ * `SessionContext` owns N of these so a single browser connection can host
+ * multiple concurrent agents (each its own session) inside the same gateway —
+ * and, when sandboxed, the same microsandbox VM. Per-slot mutable state used
+ * to live directly on `SessionContext`; it now lives here.
+ */
+class SessionSlot {
+  agentId: AgentId;
+  agent: SpawnedAgent | null = null;
+  agentSessionId: string | null = null;
+  /** Suppress fatal onExit when we kill the subprocess deliberately. */
+  expectingExit = false;
+  /** Mid-prompt clean exit → fatal; idle clean exit → lazy respawn. */
+  promptInFlight = false;
+  /** Lazy-respawn coalescer — multiple concurrent RPCs wait on the same promise. */
+  respawnPromise: Promise<void> | null = null;
+  /** Normalised model catalog for this slot's agent; null when unsupported. */
+  modelCatalog: ModelCatalog | null = null;
+  /** True once the slot has been killed for good. */
+  closed = false;
+
+  constructor(
+    readonly key: SessionKey,
+    agentId: AgentId,
+  ) {
+    this.agentId = agentId;
+  }
 }
 
 class SessionContext {
   private readonly sessionId = randomUUID();
   private readonly socket: GatewaySocket;
   private readonly logger: Logger;
-  private agent: SpawnedAgent | null = null;
-  private agentSessionId: string | null = null;
   private authCtx: AuthContext | null;
   private closed = false;
-  /**
-   * Set to true while an agent is being intentionally killed (switch-agent /
-   * shutdown). The onExit hook checks this so it doesn't fire a fatal
-   * agent_crashed/agent_exited error frame for an expected exit.
-   */
-  private expectingExit = false;
-  /**
-   * Whether a `session/prompt` is in flight. Affects how we treat a clean
-   * agent exit: mid-prompt → fatal; idle → silent respawn on next request.
-   */
-  private promptInFlight = false;
-  /**
-   * The agent id we currently consider "selected" for this session. Tracked
-   * separately from `this.agent` so we can respawn it transparently if it
-   * exits while idle.
-   */
-  private currentAgentId: AgentId | null = null;
-  /** Lazy-respawn coalescer — multiple concurrent RPCs wait on the same promise. */
-  private respawnPromise: Promise<void> | null = null;
-  /** Normalised model catalog for the current agent; null when unsupported. */
-  private modelCatalog: import("@beamhop/acp-protocol").ModelCatalog | null = null;
+  /** Slot key for the legacy single-session path (hello / switch-agent). */
+  private readonly primaryKey: SessionKey = "primary";
+  /** All open slots, keyed by client-issued `sessionKey`. */
+  private readonly slots = new Map<SessionKey, SessionSlot>();
   private readonly pendingPermissions: PendingPermissions;
   private readonly pendingLogins: PendingLogins;
   private readonly closeCallbacks: Array<() => void> = [];
@@ -332,7 +358,11 @@ class SessionContext {
       case "hello":
         return this.handleHello(msg);
       case "rpc":
-        return this.handleRpc(msg.payload);
+        return this.handleRpc(msg.sessionKey, msg.payload);
+      case "session-new":
+        return this.handleNewSession(msg.payload);
+      case "session-close":
+        return this.handleCloseSession(msg.sessionKey, msg.reason);
       case "rpc-result":
       case "rpc-error": {
         // These are responses to a2c RPCs we initiated against the browser
@@ -358,14 +388,14 @@ class SessionContext {
         });
         return;
       case "switch-agent":
-        return this.handleSwitchAgent(msg.agentId);
+        return this.handleSwitchAgent(msg.sessionKey ?? this.primaryKey, msg.agentId);
       case "cancel":
-        return this.handleCancel();
+        return this.handleCancel(msg.sessionKey ?? this.primaryKey);
       case "permission-response":
         this.pendingPermissions.resolve(msg.payload.id, msg.payload.decision);
         return;
       case "set-model":
-        return this.handleSetModel(msg.modelId, msg.requestId);
+        return this.handleSetModel(msg.sessionKey ?? this.primaryKey, msg.modelId, msg.requestId);
       case "login-start":
         return this.handleLoginStart(msg.agentId, msg.requestId);
       case "login-data":
@@ -381,6 +411,7 @@ class SessionContext {
       case "model-update":
       case "login-ready":
       case "login-end":
+      case "session-new-result":
         // Server-only kinds; receiving from client is a protocol bug.
         this.sendNonFatal({
           code: "protocol_error",
@@ -452,17 +483,49 @@ class SessionContext {
       });
       return;
     }
-    await this.startAgent(agentId);
+    // The primary slot doubles as the legacy single-session path: success is
+    // reported via `ready`, failure as a fatal `error` that closes the socket.
+    const slot = this.openSlot(this.primaryKey, agentId);
+    await this.startAgent(slot, { kind: "primary" });
   }
 
-  private async startAgent(agentId: AgentId) {
-    this.currentAgentId = agentId;
-    const def = resolveAgent(this.init.agents, agentId);
+  private openSlot(key: SessionKey, agentId: AgentId): SessionSlot {
+    const existing = this.slots.get(key);
+    if (existing) return existing;
+    const slot = new SessionSlot(key, agentId);
+    this.slots.set(key, slot);
+    return slot;
+  }
+
+  /**
+   * Bring a slot up: spawn the agent CLI, call initialize + session/new, then
+   * acknowledge per the slot's role. The primary slot sends `ready` (and
+   * fatals on failure — single-session callers expect the socket to close).
+   * Non-primary slots send `session-new-result` (and never fatal — one bad
+   * agent shouldn't kill the whole connection).
+   */
+  private async startAgent(
+    slot: SessionSlot,
+    role: { kind: "primary" } | { kind: "secondary"; label?: string },
+  ) {
+    const reportFailure = (err: WireError) => {
+      if (role.kind === "primary") {
+        this.fatal(err);
+      } else {
+        this.send({
+          kind: "session-new-result",
+          payload: { sessionKey: slot.key, ok: false, error: err },
+        });
+        this.slots.delete(slot.key);
+      }
+    };
+
+    const def = resolveAgent(this.init.agents, slot.agentId);
     if (!def) {
-      this.fatal({
+      reportFailure({
         code: "agent_not_registered",
-        message: `unknown agent: ${String(agentId)}`,
-        hint: `register it with defineAgent({ id: '${String(agentId)}', ... }) or pick one of: ${Object.keys(this.init.agents).join(", ")}`,
+        message: `unknown agent: ${String(slot.agentId)}`,
+        hint: `register it with defineAgent({ id: '${String(slot.agentId)}', ... }) or pick one of: ${Object.keys(this.init.agents).join(", ")}`,
       });
       return;
     }
@@ -471,9 +534,13 @@ class SessionContext {
     if (def.healthCheck) {
       try {
         const ok = await def.healthCheck(def);
-        if (!ok) return this.failInstall(def);
+        if (!ok) {
+          reportFailure(installError(def));
+          return;
+        }
       } catch {
-        return this.failInstall(def);
+        reportFailure(installError(def));
+        return;
       }
     }
 
@@ -483,7 +550,8 @@ class SessionContext {
       const spawnPromise = spawnAgent({
         definition: def,
         logger: this.logger,
-        hooks: this.buildHooks(def),
+        hooks: this.buildHooks(slot, def),
+        spawn: this.init.spawn,
       });
       const timeoutPromise = new Promise<never>((_, reject) => {
         spawnTimer = setTimeout(() => {
@@ -491,19 +559,19 @@ class SessionContext {
           reject(new Error("spawn timeout"));
         }, this.init.limits.spawnTimeoutMs);
       });
-      this.agent = await Promise.race([spawnPromise, timeoutPromise]);
+      slot.agent = await Promise.race([spawnPromise, timeoutPromise]);
     } catch (err) {
       const errCode = (err as NodeJS.ErrnoException).code;
       if (errCode === "ENOENT") {
-        this.failInstall(def);
+        reportFailure(installError(def));
       } else if (spawnFailed) {
-        this.fatal({
+        reportFailure({
           code: "agent_spawn_timeout",
           message: `agent did not respond within ${this.init.limits.spawnTimeoutMs}ms`,
           context: { agentId: def.id },
         });
       } else {
-        this.fatal({
+        reportFailure({
           code: "agent_spawn_timeout",
           message: `failed to spawn ${def.command}: ${errMsg(err)}`,
           context: { agentId: def.id, errCode },
@@ -523,38 +591,54 @@ class SessionContext {
           terminal: true,
         },
       };
-      const initResp = await this.agent.connection.initialize(initParams);
+      const initResp = await slot.agent!.connection.initialize(initParams);
 
       const newSessionParams: NewSessionRequest = {
         cwd: def.cwd ?? process.cwd(),
         mcpServers: [],
       };
-      const newSession = await this.agent.connection.newSession(newSessionParams);
-      this.agentSessionId = newSession.sessionId;
-      this.modelCatalog = extractModelCatalog(newSession);
+      const newSession = await slot.agent!.connection.newSession(newSessionParams);
+      slot.agentSessionId = newSession.sessionId;
+      slot.modelCatalog = extractModelCatalog(newSession);
       this.logger.debug("agent session ready", {
-        agentSessionId: this.agentSessionId,
-        modelChannel: this.modelCatalog?.channel ?? "none",
-        modelCount: this.modelCatalog?.models.length ?? 0,
+        sessionKey: slot.key,
+        agentSessionId: slot.agentSessionId,
+        modelChannel: slot.modelCatalog?.channel ?? "none",
+        modelCount: slot.modelCatalog?.models.length ?? 0,
       });
 
-      const ready: ReadyPayload = {
-        sessionId: this.sessionId,
-        agentId: def.id,
-        protocolVersion: PROTOCOL_VERSION,
-        agentCapabilities: initResp,
-        availableAgents: Object.values(this.init.agents).map((a) => ({
-          id: a.id,
-          label: a.label,
-          login: loginKindOf(a),
-        })),
-        modelCatalog: this.modelCatalog,
-        authMethods: extractAuthMethods(initResp),
-      };
-      this.send({ kind: "ready", payload: ready });
+      if (role.kind === "primary") {
+        const ready: ReadyPayload = {
+          sessionId: this.sessionId,
+          agentId: def.id,
+          protocolVersion: PROTOCOL_VERSION,
+          agentCapabilities: initResp,
+          availableAgents: Object.values(this.init.agents).map((a) => ({
+            id: a.id,
+            label: a.label,
+            login: loginKindOf(a),
+          })),
+          modelCatalog: slot.modelCatalog,
+          authMethods: extractAuthMethods(initResp),
+        };
+        this.send({ kind: "ready", payload: ready });
+      } else {
+        this.send({
+          kind: "session-new-result",
+          payload: {
+            sessionKey: slot.key,
+            ok: true,
+            agentId: def.id,
+            agentSessionId: slot.agentSessionId!,
+            agentCapabilities: initResp,
+            modelCatalog: slot.modelCatalog,
+            authMethods: extractAuthMethods(initResp),
+          },
+        });
+      }
       this.init.emit({ type: "session_start", sessionId: this.sessionId, agentId: def.id });
     } catch (err) {
-      this.fatal({
+      reportFailure({
         code: "internal_error",
         message: `agent initialize/newSession failed: ${errMsg(err)}`,
         context: { agentId: def.id },
@@ -562,14 +646,6 @@ class SessionContext {
     }
   }
 
-  private failInstall(def: AgentDefinition) {
-    this.fatal({
-      code: "agent_not_installed",
-      message: `binary "${def.command}" not found on PATH`,
-      hint: def.installHint,
-      context: { agentId: def.id },
-    });
-  }
 
   // ---------- ACP routing ----------
 
@@ -578,36 +654,54 @@ class SessionContext {
    * gateway is intentionally transparent. We just forward to the agent and
    * relay the result. The browser typed surface is responsible for shaping params.
    */
-  private async handleRpc(req: { id: string | number; method: string; params?: unknown; direction: "c2a" | "a2c" }) {
+  private async handleRpc(
+    sessionKey: SessionKey | undefined,
+    req: { id: string | number; method: string; params?: unknown; direction: "c2a" | "a2c" },
+  ) {
     if (req.direction !== "c2a") {
       this.sendNonFatal({ code: "protocol_error", message: "rpc direction must be c2a inbound" });
+      return;
+    }
+    const key = sessionKey ?? this.primaryKey;
+    const slot = this.slots.get(key);
+    if (!slot) {
+      this.send({
+        kind: "rpc-error",
+        sessionKey,
+        payload: {
+          id: req.id,
+          error: { code: -32000, message: `unknown sessionKey: ${String(key)}` },
+        },
+      });
       return;
     }
 
     // Lazy respawn: if the previously-spawned agent exited while idle, bring
     // it back up before forwarding the request. Multiple in-flight RPCs share
     // a single respawn promise so we don't double-spawn.
-    if (!this.agent && this.currentAgentId) {
+    if (!slot.agent) {
       try {
-        await this.ensureAgentReady();
+        await this.ensureAgentReady(slot);
       } catch (err) {
         this.send({
           kind: "rpc-error",
+          sessionKey,
           payload: { id: req.id, error: { code: -32000, message: `respawn failed: ${errMsg(err)}` } },
         });
         return;
       }
     }
-    if (!this.agent) {
+    if (!slot.agent) {
       this.send({
         kind: "rpc-error",
+        sessionKey,
         payload: { id: req.id, error: { code: -32000, message: "session not ready" } },
       });
       return;
     }
 
     const isPrompt = req.method === "session/prompt";
-    if (isPrompt) this.promptInFlight = true;
+    if (isPrompt) slot.promptInFlight = true;
 
     // Prompt timeout: if the agent acks the prompt but never finalizes (a
     // common failure mode when the agent's upstream LLM is rate-limited or
@@ -625,9 +719,10 @@ class SessionContext {
                 method: req.method,
                 id: req.id,
                 timeoutMs,
+                sessionKey: slot.key,
               });
               // Fire session/cancel best-effort; don't await it (might also hang).
-              void this.handleCancel();
+              void this.handleCancel(slot.key);
               reject({
                 code: -32001,
                 message: `prompt timed out after ${timeoutMs}ms with no agent response. The agent may be rate-limited, misconfigured, or stuck; see the log drawer for its stderr.`,
@@ -639,44 +734,44 @@ class SessionContext {
 
     try {
       const result = timeoutPromise
-        ? await Promise.race([this.callAgentMethod(req.method, req.params), timeoutPromise])
-        : await this.callAgentMethod(req.method, req.params);
-      this.send({ kind: "rpc-result", payload: { id: req.id, result } });
+        ? await Promise.race([this.callAgentMethod(slot, req.method, req.params), timeoutPromise])
+        : await this.callAgentMethod(slot, req.method, req.params);
+      this.send({ kind: "rpc-result", sessionKey, payload: { id: req.id, result } });
     } catch (err) {
       const rpcErr =
         err && typeof err === "object" && "code" in err && "message" in err
           ? (err as { code: number; message: string; data?: unknown })
           : { code: -32603, message: errMsg(err) };
-      this.send({ kind: "rpc-error", payload: { id: req.id, error: rpcErr } });
+      this.send({ kind: "rpc-error", sessionKey, payload: { id: req.id, error: rpcErr } });
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle);
-      if (isPrompt) this.promptInFlight = false;
+      if (isPrompt) slot.promptInFlight = false;
       void timeoutFired;
     }
   }
 
   /**
-   * Respawn the current agent if it died while idle. Coalesces concurrent
+   * Respawn a slot's agent if it died while idle. Coalesces concurrent
    * callers onto a single in-flight respawn.
    */
-  private ensureAgentReady(): Promise<void> {
-    if (this.agent) return Promise.resolve();
-    if (this.respawnPromise) return this.respawnPromise;
-    if (!this.currentAgentId) {
-      return Promise.reject(new Error("no currentAgentId to respawn"));
-    }
-    const id = this.currentAgentId;
-    this.respawnPromise = (async () => {
-      this.logger.info("respawning agent on demand", { agentId: id });
-      await this.startAgent(id);
+  private ensureAgentReady(slot: SessionSlot): Promise<void> {
+    if (slot.agent) return Promise.resolve();
+    if (slot.respawnPromise) return slot.respawnPromise;
+    if (slot.closed) return Promise.reject(new Error("slot closed"));
+    slot.respawnPromise = (async () => {
+      this.logger.info("respawning agent on demand", { agentId: slot.agentId, sessionKey: slot.key });
+      // Secondary slots respawn silently — no fresh `session-new-result` since
+      // the client already considers this slot open. Primary slots also
+      // respawn silently since the original `ready` already fired.
+      await this.startAgent(slot, slot.key === this.primaryKey ? { kind: "primary" } : { kind: "secondary" });
     })().finally(() => {
-      this.respawnPromise = null;
+      slot.respawnPromise = null;
     });
-    return this.respawnPromise;
+    return slot.respawnPromise;
   }
 
-  private async callAgentMethod(method: string, params: unknown): Promise<unknown> {
-    const agent = this.agent!.connection;
+  private async callAgentMethod(slot: SessionSlot, method: string, params: unknown): Promise<unknown> {
+    const agent = slot.agent!.connection;
     // ALWAYS overwrite sessionId on session/* methods with the gateway-tracked
     // agent sessionId. The browser side cannot know the agent's real session
     // id (the gateway issues its own opaque id at `ready`), so any sessionId
@@ -684,9 +779,9 @@ class SessionContext {
     // was the cause of the user-reported "prompt does nothing" bug with
     // opencode (and any other agent that uses non-uuid session ids).
     const withSession = (p: unknown) => {
-      if (!this.agentSessionId) return p;
+      if (!slot.agentSessionId) return p;
       const obj = p && typeof p === "object" ? (p as Record<string, unknown>) : {};
-      return { ...obj, sessionId: this.agentSessionId };
+      return { ...obj, sessionId: slot.agentSessionId };
     };
     switch (method) {
       case "initialize":
@@ -709,31 +804,131 @@ class SessionContext {
     }
   }
 
-  private async handleCancel() {
-    if (!this.agent || !this.agentSessionId) return;
+  private async handleCancel(sessionKey: SessionKey) {
+    const slot = this.slots.get(sessionKey);
+    if (!slot || !slot.agent || !slot.agentSessionId) return;
     try {
-      const params: CancelNotification = { sessionId: this.agentSessionId };
-      await this.agent.connection.cancel(params);
+      const params: CancelNotification = { sessionId: slot.agentSessionId };
+      await slot.agent.connection.cancel(params);
     } catch (err) {
-      this.logger.warn("cancel failed", { err: errMsg(err) });
+      this.logger.warn("cancel failed", { err: errMsg(err), sessionKey });
     }
   }
 
-  private async handleSwitchAgent(agentId: AgentId) {
-    this.logger.info("switching agent", { from: this.agent?.definition.id, to: agentId });
-    if (this.agent) {
-      // Tell the onExit hook to expect a clean exit so it doesn't fire fatal.
-      this.expectingExit = true;
-      try {
-        await this.agent.kill();
-      } finally {
-        this.expectingExit = false;
-      }
-      this.agent = null;
-      this.agentSessionId = null;
+  /**
+   * Open a brand-new slot for a new agent subprocess inside the same gateway
+   * connection (and same sandbox VM, when sandboxed). Used by the playground
+   * sidebar's "pick agent" flow: each pick opens a fresh session alongside
+   * the existing ones rather than killing the previous one.
+   */
+  private async handleNewSession(payload: {
+    sessionKey: SessionKey;
+    agentId: AgentId;
+    label?: string;
+  }) {
+    const { sessionKey, agentId, label } = payload;
+    if (!sessionKey || typeof sessionKey !== "string") {
+      this.sendNonFatal({
+        code: "protocol_error",
+        message: "session-new requires a non-empty sessionKey",
+      });
+      return;
     }
-    this.modelCatalog = null;
-    await this.startAgent(agentId);
+    if (this.slots.has(sessionKey)) {
+      this.send({
+        kind: "session-new-result",
+        payload: {
+          sessionKey,
+          ok: false,
+          error: {
+            code: "session_already_active",
+            message: `sessionKey "${sessionKey}" is already open`,
+          },
+        },
+      });
+      return;
+    }
+    if (this.slots.size >= this.init.limits.maxConcurrentSessions) {
+      this.send({
+        kind: "session-new-result",
+        payload: {
+          sessionKey,
+          ok: false,
+          error: {
+            code: "session_limit_exceeded",
+            message: `connection holds the per-connection slot limit (${this.init.limits.maxConcurrentSessions})`,
+          },
+        },
+      });
+      return;
+    }
+    const slot = this.openSlot(sessionKey, agentId);
+    await this.startAgent(slot, { kind: "secondary", label });
+  }
+
+  private async handleCloseSession(sessionKey: SessionKey, reason?: string) {
+    const slot = this.slots.get(sessionKey);
+    if (!slot) return;
+    // The primary slot is bound to the connection lifetime; ignore explicit
+    // close attempts so clients can't half-orphan it.
+    if (sessionKey === this.primaryKey) {
+      this.sendNonFatal({
+        code: "protocol_error",
+        message: "the primary session slot is closed only by the connection itself",
+      });
+      return;
+    }
+    await this.killSlot(slot, reason ?? "client_close");
+    this.slots.delete(sessionKey);
+  }
+
+  private async killSlot(slot: SessionSlot, reason: string) {
+    slot.closed = true;
+    if (slot.agent) {
+      slot.expectingExit = true;
+      try {
+        await slot.agent.kill();
+      } catch (err) {
+        this.logger.warn("agent kill threw", { err: errMsg(err), sessionKey: slot.key });
+      } finally {
+        slot.expectingExit = false;
+      }
+      slot.agent = null;
+      slot.agentSessionId = null;
+    }
+    this.logger.info("slot closed", { sessionKey: slot.key, reason });
+  }
+
+  private async handleSwitchAgent(sessionKey: SessionKey, agentId: AgentId) {
+    const slot = this.slots.get(sessionKey);
+    if (!slot) {
+      this.sendNonFatal({
+        code: "protocol_error",
+        message: `switch-agent for unknown sessionKey: ${String(sessionKey)}`,
+      });
+      return;
+    }
+    this.logger.info("switching agent", {
+      from: slot.agent?.definition.id,
+      to: agentId,
+      sessionKey,
+    });
+    if (slot.agent) {
+      slot.expectingExit = true;
+      try {
+        await slot.agent.kill();
+      } finally {
+        slot.expectingExit = false;
+      }
+      slot.agent = null;
+      slot.agentSessionId = null;
+    }
+    slot.modelCatalog = null;
+    slot.agentId = agentId;
+    await this.startAgent(
+      slot,
+      sessionKey === this.primaryKey ? { kind: "primary" } : { kind: "secondary" },
+    );
   }
 
   /**
@@ -742,20 +937,24 @@ class SessionContext {
    * surfaces rejections as `set-model-result { ok: false }` so the UI can
    * revert without freezing.
    */
-  private async handleSetModel(modelId: string, requestId: string) {
-    if (!this.agent || !this.agentSessionId) {
+  private async handleSetModel(sessionKey: SessionKey, modelId: string, requestId: string) {
+    const stampedKey = sessionKey === this.primaryKey ? undefined : sessionKey;
+    const slot = this.slots.get(sessionKey);
+    if (!slot || !slot.agent || !slot.agentSessionId) {
       this.send({
         kind: "set-model-result",
+        sessionKey: stampedKey,
         requestId,
         ok: false,
         error: { code: "session_not_ready", message: "no active agent session" },
       });
       return;
     }
-    const catalog = this.modelCatalog;
+    const catalog = slot.modelCatalog;
     if (!catalog || catalog.channel === "none") {
       this.send({
         kind: "set-model-result",
+        sessionKey: stampedKey,
         requestId,
         ok: false,
         error: {
@@ -769,6 +968,7 @@ class SessionContext {
     if (!catalog.models.some((m) => m.id === modelId)) {
       this.send({
         kind: "set-model-result",
+        sessionKey: stampedKey,
         requestId,
         ok: false,
         error: {
@@ -786,36 +986,41 @@ class SessionContext {
       //  - `extMethod` mangles the method name with a `_` prefix
       // Both bugs are upstream-tracked; this bypass keeps us correct today.
       if (catalog.channel === "set_model") {
-        await this.agent.sendRawRpc("session/set_model", {
-          sessionId: this.agentSessionId,
+        await slot.agent.sendRawRpc("session/set_model", {
+          sessionId: slot.agentSessionId,
           modelId,
         });
       } else {
-        await this.agent.sendRawRpc("session/set_config_option", {
-          sessionId: this.agentSessionId,
+        await slot.agent.sendRawRpc("session/set_config_option", {
+          sessionId: slot.agentSessionId,
           configId: "model",
           value: modelId,
         });
       }
       // Update local state and acknowledge with the new catalog.
       const updated: ModelCatalog = { ...catalog, currentModelId: modelId };
-      this.modelCatalog = updated;
-      this.send({ kind: "set-model-result", requestId, ok: true, modelCatalog: updated });
+      slot.modelCatalog = updated;
+      this.send({
+        kind: "set-model-result",
+        sessionKey: stampedKey,
+        requestId,
+        ok: true,
+        modelCatalog: updated,
+      });
     } catch (err) {
       this.logger.warn("set-model rejected by agent", {
         modelId,
         channel: catalog.channel,
         err: errMsg(err),
+        sessionKey,
       });
       // Catalog stays unchanged — the browser can revert its UI on the rejection.
       this.send({
         kind: "set-model-result",
+        sessionKey: stampedKey,
         requestId,
         ok: false,
-        error: {
-          code: "agent_rejected",
-          message: errMsg(err),
-        },
+        error: { code: "agent_rejected", message: errMsg(err) },
       });
     }
   }
@@ -869,51 +1074,59 @@ class SessionContext {
 
   // ---------- Hooks the subprocess calls back into ----------
 
-  private buildHooks(def: AgentDefinition) {
+  private buildHooks(slot: SessionSlot, def: AgentDefinition) {
+    const stampedKey = slot.key === this.primaryKey ? undefined : slot.key;
     const forwardNotify = (method: string, params: unknown) =>
-      this.send({ kind: "notify", payload: { direction: "a2c", method, params } });
+      this.send({
+        kind: "notify",
+        sessionKey: stampedKey,
+        payload: { direction: "a2c", method, params },
+      });
 
     return {
       onSessionUpdate: (n: unknown) => forwardNotify("session/update", n),
       onRequestPermission: (req: RequestPermissionRequest): Promise<RequestPermissionResponse> =>
-        this.handlePermission(req, def),
+        this.handlePermission(slot, req, def),
       onReadTextFile: async (req: { path: string; sessionId: string }) =>
-        this.callBrowserRpc("fs/read_text_file", req) as Promise<{ content: string }>,
+        this.callBrowserRpc(slot, "fs/read_text_file", req) as Promise<{ content: string }>,
       onWriteTextFile: async (req: { path: string; content: string; sessionId: string }) =>
-        this.callBrowserRpc("fs/write_text_file", req) as Promise<Record<string, never>>,
+        this.callBrowserRpc(slot, "fs/write_text_file", req) as Promise<Record<string, never>>,
       onCreateTerminal: async (req: unknown) =>
-        this.callBrowserRpc("terminal/create", req) as Promise<{ terminalId: string }>,
+        this.callBrowserRpc(slot, "terminal/create", req) as Promise<{ terminalId: string }>,
       onTerminalOutput: async (req: unknown) =>
-        this.callBrowserRpc("terminal/output", req) as Promise<{
+        this.callBrowserRpc(slot, "terminal/output", req) as Promise<{
           output: string;
           truncated: boolean;
           exitStatus?: { exitCode?: number | null; signal?: string | null } | null;
         }>,
       onWaitForTerminalExit: async (req: unknown) =>
-        this.callBrowserRpc("terminal/wait_for_exit", req) as Promise<{
+        this.callBrowserRpc(slot, "terminal/wait_for_exit", req) as Promise<{
           exitCode?: number | null;
           signal?: string | null;
         }>,
       onKillTerminal: async (req: unknown) =>
-        this.callBrowserRpc("terminal/kill", req) as Promise<Record<string, never>>,
+        this.callBrowserRpc(slot, "terminal/kill", req) as Promise<Record<string, never>>,
       onReleaseTerminal: async (req: unknown) =>
-        this.callBrowserRpc("terminal/release", req) as Promise<Record<string, never>>,
+        this.callBrowserRpc(slot, "terminal/release", req) as Promise<Record<string, never>>,
       onExit: ({ code, signal, stderrTail }: { code: number | null; signal: NodeJS.Signals | null; stderrTail: string }) => {
-        if (this.closed) return;
+        if (this.closed || slot.closed) return;
         // Expected exit (switch-agent, shutdown): no error frame, no event.
-        if (this.expectingExit) {
+        if (slot.expectingExit) {
           this.logger.debug("agent exit expected (switch/shutdown), suppressing fatal", {
             code,
             signal,
             agentId: def.id,
+            sessionKey: slot.key,
           });
           return;
         }
 
         // Crash (non-zero) or mid-prompt exit is always fatal — the user is
-        // waiting on a response and the agent vanished.
+        // waiting on a response and the agent vanished. For non-primary slots
+        // it's slot-fatal (we close just that slot); for the primary slot it's
+        // connection-fatal (preserves the legacy single-session contract).
         const isCrash = code !== 0;
-        if (isCrash || this.promptInFlight) {
+        if (isCrash || slot.promptInFlight) {
           this.init.emit({
             type: "agent_crash",
             sessionId: this.sessionId,
@@ -921,13 +1134,23 @@ class SessionContext {
             code,
             signal,
           });
-          this.fatal({
+          const err: WireError = {
             code: isCrash ? "agent_crashed" : "agent_exited",
             message: isCrash
               ? `agent crashed (exit=${code} signal=${signal})`
               : `agent exited mid-prompt`,
-            context: { stderrTail: stderrTail.slice(-2_000), agentId: def.id },
-          });
+            context: { stderrTail: stderrTail.slice(-2_000), agentId: def.id, sessionKey: slot.key },
+          };
+          if (slot.key === this.primaryKey) {
+            this.fatal(err);
+          } else {
+            this.send({ kind: "error", sessionKey: stampedKey, fatal: false, payload: err });
+            slot.agent = null;
+            slot.agentSessionId = null;
+            slot.closed = true;
+            this.slots.delete(slot.key);
+            this.send({ kind: "session-close", sessionKey: slot.key, reason: err.code });
+          }
           return;
         }
 
@@ -937,12 +1160,13 @@ class SessionContext {
         this.logger.info("agent exited while idle, will respawn on next request", {
           code,
           agentId: def.id,
+          sessionKey: slot.key,
         });
-        this.agent = null;
-        this.agentSessionId = null;
+        slot.agent = null;
+        slot.agentSessionId = null;
       },
       onSpawnError: (err: Error) =>
-        this.logger.error("spawn error", { err: err.message, agentId: def.id }),
+        this.logger.error("spawn error", { err: err.message, agentId: def.id, sessionKey: slot.key }),
       onStderrLine: (line: string) => this.forwardStderr(def, line),
     };
   }
@@ -971,6 +1195,7 @@ class SessionContext {
   }
 
   private async handlePermission(
+    slot: SessionSlot,
     req: RequestPermissionRequest,
     def: AgentDefinition,
   ): Promise<RequestPermissionResponse> {
@@ -990,8 +1215,9 @@ class SessionContext {
       this.logger.warn("permission auto-denied (forwarding disabled, no policy match)");
       return { outcome: { outcome: "selected", optionId: pickOptionId(req, "reject") } } as RequestPermissionResponse;
     }
+    const stampedKey = slot.key === this.primaryKey ? undefined : slot.key;
     const { id, promise } = this.pendingPermissions.open(this.init.permission.timeoutMs);
-    this.send({ kind: "permission-prompt", payload: { id, request: req } });
+    this.send({ kind: "permission-prompt", sessionKey: stampedKey, payload: { id, request: req } });
     const decision = await promise;
     const allow = decision === "allow_once" || decision === "allow_always";
     return {
@@ -1004,11 +1230,12 @@ class SessionContext {
    * frame; the browser is expected to handle it and reply with `rpc-result` or
    * `rpc-error`. The browser handler is what actually performs fs/terminal work.
    */
-  private callBrowserRpc(method: string, params: unknown): Promise<unknown> {
+  private callBrowserRpc(slot: SessionSlot, method: string, params: unknown): Promise<unknown> {
     const id = randomUUID();
+    const stampedKey = slot.key === this.primaryKey ? undefined : slot.key;
     return new Promise((resolve, reject) => {
       this.browserRpcWaiters.set(id, { resolve, reject });
-      this.send({ kind: "rpc", payload: { direction: "a2c", id, method, params } });
+      this.send({ kind: "rpc", sessionKey: stampedKey, payload: { direction: "a2c", id, method, params } });
     });
   }
 
@@ -1048,16 +1275,21 @@ class SessionContext {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.pendingPermissions.rejectAll(`session_closed:${reason}`);
     this.pendingLogins.closeAll(`session_closed:${reason}`);
-    this.expectingExit = true;
-    try {
-      await this.agent?.kill();
-    } catch (err) {
-      this.logger.warn("agent kill threw on shutdown", { err: errMsg(err) });
-    }
+    await Promise.all([...this.slots.values()].map((s) => this.killSlot(s, reason)));
+    this.slots.clear();
     this.init.emit({ type: "session_end", sessionId: this.sessionId, reason });
     for (const cb of this.closeCallbacks) cb();
   }
 
+}
+
+function installError(def: AgentDefinition): WireError {
+  return {
+    code: "agent_not_installed",
+    message: `binary "${def.command}" not found on PATH`,
+    hint: def.installHint,
+    context: { agentId: def.id },
+  };
 }
 
 // ---------- Helpers ----------

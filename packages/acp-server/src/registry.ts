@@ -154,14 +154,18 @@ export const builtInAgents: Record<BuiltInAgentId, AgentDefinition> = {
     id: "opencode",
     label: "OpenCode",
     // OpenCode has a built-in `acp` subcommand — no adapter required.
-    command: "opencode",
-    args: ["acp"],
+    // Run via bunx so the host doesn't need a global install. Package name
+    // (`opencode-ai`) differs from the binary it exposes (`opencode`), so
+    // we have to use the explicit --package form.
+    command: "bunx",
+    args: ["-y", "--package=opencode-ai", "opencode", "acp"],
     installHint:
-      "install opencode first: `bun i -g opencode-ai` (or brew/curl, see https://opencode.ai). After install, run `opencode auth login` or set a provider API key (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY).",
+      "no install needed (auto-downloaded via bunx). Requires an LLM provider API key (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY) in env, or run `opencode auth login` first.",
+    healthCheck: () => true,
     login: {
       kind: "tty",
-      command: "opencode",
-      args: ["auth", "login"],
+      command: "bunx",
+      args: ["-y", "--package=opencode-ai", "opencode", "auth", "login"],
       successMarker: /authenticated|logged in|saved/i,
     },
   }),

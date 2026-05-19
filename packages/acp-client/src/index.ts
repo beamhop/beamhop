@@ -10,9 +10,11 @@ export {
   type AcpSession,
   type LoginExitInfo,
   type LoginStream,
+  type NewSessionOptions,
   type PromptInput,
   type PromptOptions,
   type PromptStream,
+  type SessionHandle,
   type SessionOptions,
 } from "./session.js";
 export {

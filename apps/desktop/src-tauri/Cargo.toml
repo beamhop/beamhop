@@ -1,0 +1,18 @@
+[package]
+name = "beamhop-desktop"
+version = "0.0.0"
+description = "Beamhop desktop host"
+authors = ["beamhop"]
+license = "Apache-2.0"
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

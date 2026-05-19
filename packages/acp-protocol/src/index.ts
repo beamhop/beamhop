@@ -215,6 +215,37 @@ export interface RpcNotify {
   params?: unknown;
 }
 
+// ---------- Multi-session routing ----------
+//
+// A single gateway connection can host multiple agent subprocesses, each one
+// a distinct ACP session. The client assigns an opaque `sessionKey` per slot
+// and stamps it on outbound frames so the gateway routes to the right
+// subprocess. The gateway stamps the same key on a2c frames so the client
+// can fan them out to per-session listeners. Frames without a key target the
+// legacy "primary" slot for back-compat with single-session callers.
+
+/** Opaque client-issued routing key. */
+export type SessionKey = string;
+
+export interface SessionNewPayload {
+  sessionKey: SessionKey;
+  agentId: AgentId;
+  /** Optional human label, shown in the UI sidebar. */
+  label?: string;
+}
+
+export type SessionNewResult =
+  | {
+      sessionKey: SessionKey;
+      ok: true;
+      agentId: AgentId;
+      agentSessionId: string;
+      agentCapabilities?: unknown;
+      modelCatalog: ModelCatalog | null;
+      authMethods?: AuthMethod[];
+    }
+  | { sessionKey: SessionKey; ok: false; error: WireError };
+
 // ---------- Login (PTY-based out-of-band agent auth) ----------
 
 /**
@@ -232,18 +263,21 @@ export type LoginEndReason = "exit" | "timeout" | "cancelled" | "success_marker"
 export type WireMessage =
   | { kind: "hello"; protocolVersion: number; clientInfo: ClientInfo; agent?: AgentId }
   | { kind: "ready"; payload: ReadyPayload }
-  | { kind: "rpc"; payload: RpcRequest }
-  | { kind: "rpc-result"; payload: RpcResult }
-  | { kind: "rpc-error"; payload: RpcErrorBody }
-  | { kind: "notify"; payload: RpcNotify }
-  | { kind: "switch-agent"; agentId: AgentId; config?: Record<string, unknown> }
-  | { kind: "set-model"; modelId: string; requestId: string }
-  | { kind: "set-model-result"; requestId: string; ok: true; modelCatalog: ModelCatalog }
-  | { kind: "set-model-result"; requestId: string; ok: false; error: { code: string; message: string; hint?: string } }
-  | { kind: "model-update"; modelCatalog: ModelCatalog }
-  | { kind: "cancel"; sessionId?: string }
-  | { kind: "permission-prompt"; payload: PermissionPromptPayload }
-  | { kind: "permission-response"; payload: PermissionResponsePayload }
+  | { kind: "rpc"; sessionKey?: SessionKey; payload: RpcRequest }
+  | { kind: "rpc-result"; sessionKey?: SessionKey; payload: RpcResult }
+  | { kind: "rpc-error"; sessionKey?: SessionKey; payload: RpcErrorBody }
+  | { kind: "notify"; sessionKey?: SessionKey; payload: RpcNotify }
+  | { kind: "switch-agent"; sessionKey?: SessionKey; agentId: AgentId; config?: Record<string, unknown> }
+  | { kind: "session-new"; payload: SessionNewPayload }
+  | { kind: "session-new-result"; payload: SessionNewResult }
+  | { kind: "session-close"; sessionKey: SessionKey; reason?: string }
+  | { kind: "set-model"; sessionKey?: SessionKey; modelId: string; requestId: string }
+  | { kind: "set-model-result"; sessionKey?: SessionKey; requestId: string; ok: true; modelCatalog: ModelCatalog }
+  | { kind: "set-model-result"; sessionKey?: SessionKey; requestId: string; ok: false; error: { code: string; message: string; hint?: string } }
+  | { kind: "model-update"; sessionKey?: SessionKey; modelCatalog: ModelCatalog }
+  | { kind: "cancel"; sessionKey?: SessionKey; sessionId?: string }
+  | { kind: "permission-prompt"; sessionKey?: SessionKey; payload: PermissionPromptPayload }
+  | { kind: "permission-response"; sessionKey?: SessionKey; payload: PermissionResponsePayload }
   | { kind: "login-start"; agentId: AgentId; requestId: string }
   | { kind: "login-ready"; requestId: string; loginId: string }
   | { kind: "login-data"; loginId: string; data: string }
@@ -251,7 +285,7 @@ export type WireMessage =
   | { kind: "login-cancel"; loginId: string }
   | { kind: "login-end"; loginId: string; exitCode: number | null; reason?: LoginEndReason }
   | { kind: "log"; payload: LogEntry }
-  | { kind: "error"; fatal: boolean; payload: WireError }
+  | { kind: "error"; sessionKey?: SessionKey; fatal: boolean; payload: WireError }
   | { kind: "ping"; ts: number }
   | { kind: "pong"; ts: number }
   | { kind: "close"; code: number; reason: string };
@@ -281,6 +315,9 @@ const KNOWN_KINDS = new Set<WireMessageKind>([
   "rpc-error",
   "notify",
   "switch-agent",
+  "session-new",
+  "session-new-result",
+  "session-close",
   "cancel",
   "permission-prompt",
   "permission-response",

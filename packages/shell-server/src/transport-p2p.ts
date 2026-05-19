@@ -17,6 +17,13 @@ export interface P2PTransportOptions {
   session: SharedPtySession;
   rtcPolyfill?: unknown;
   onPeer?: (peerId: string) => void;
+  /**
+   * Soft input-lock TTL. After a peer writes, they "hold the keyboard"
+   * for this many milliseconds — writes from other peers are dropped
+   * during the window. Set to 0 to disable arbitration (free-for-all).
+   * Default: 800ms.
+   */
+  holderTtlMs?: number;
 }
 
 export interface P2PTransport {
@@ -47,6 +54,43 @@ export async function startP2PTransport(
   const sendCtlTo = (msg: ControlMessage, peerId: string) =>
     void sendCtl(encodeControl(msg), peerId);
 
+  const broadcastCtl = (msg: ControlMessage) => void sendCtl(encodeControl(msg));
+
+  // ---- soft input lock ----
+  const holderTtlMs = opts.holderTtlMs ?? 800;
+  let holder: string | null = null;
+  let holderTimer: NodeJS.Timeout | null = null;
+
+  const releaseHolder = () => {
+    if (holder === null) return;
+    holder = null;
+    if (holderTimer) {
+      clearTimeout(holderTimer);
+      holderTimer = null;
+    }
+    broadcastCtl({ type: "holder", peerId: null, ttlMs: holderTtlMs });
+  };
+
+  const armHolder = (peerId: string) => {
+    const isNew = holder !== peerId;
+    holder = peerId;
+    if (holderTimer) clearTimeout(holderTimer);
+    holderTimer = setTimeout(releaseHolder, holderTtlMs);
+    if (isNew) {
+      broadcastCtl({ type: "holder", peerId, ttlMs: holderTtlMs });
+    }
+  };
+
+  /** Returns true if the write should be forwarded to the PTY. */
+  const arbitrate = (peerId: string): boolean => {
+    if (holderTtlMs <= 0) return true;
+    if (holder === null || holder === peerId) {
+      armHolder(peerId);
+      return true;
+    }
+    return false;
+  };
+
   room.onPeerJoin((peerId) => {
     const authTimer = setTimeout(() => {
       const state = peers.get(peerId);
@@ -56,7 +100,7 @@ export async function startP2PTransport(
           peerId,
         );
       }
-    }, opts.authTimeoutMs ?? 5000);
+    }, opts.authTimeoutMs ?? 30000);
     peers.set(peerId, { authed: false, authTimer });
   });
 
@@ -67,6 +111,7 @@ export async function startP2PTransport(
       state.detach?.();
       peers.delete(peerId);
     }
+    if (holder === peerId) releaseHolder();
   });
 
   onCtl(async (raw, peerId) => {
@@ -116,7 +161,14 @@ export async function startP2PTransport(
           sessionId: opts.session.id,
           cols: opts.session.dimensions.cols,
           rows: opts.session.dimensions.rows,
+          selfPeerId: peerId,
         },
+        peerId,
+      );
+      // Sync the new peer with the current holder state so its UI starts
+      // accurate even if no one is currently typing.
+      sendCtlTo(
+        { type: "holder", peerId: holder, ttlMs: holderTtlMs },
         peerId,
       );
       opts.onPeer?.(peerId);
@@ -130,6 +182,7 @@ export async function startP2PTransport(
   onIo((data, peerId) => {
     const state = peers.get(peerId);
     if (!state?.authed) return;
+    if (!arbitrate(peerId)) return;
     opts.session.write(data);
   });
 
@@ -143,6 +196,11 @@ export async function startP2PTransport(
         state.detach?.();
       }
       peers.clear();
+      if (holderTimer) {
+        clearTimeout(holderTimer);
+        holderTimer = null;
+      }
+      holder = null;
       await room.leave();
     },
   };

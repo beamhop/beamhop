@@ -1,0 +1,35 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Beamhop",
+  "version": "0.0.0",
+  "identifier": "dev.beamhop.desktop",
+  "build": {
+    "frontendDist": "../dist/ui",
+    "devUrl": "http://localhost:5175",
+    "beforeDevCommand": "bun run dev:tauri",
+    "beforeBuildCommand": "bun run build:ui"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "beamhop // host",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 600,
+        "decorations": true,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ]
+  }
+}

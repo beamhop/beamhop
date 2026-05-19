@@ -87,6 +87,23 @@ describe("encode/decode round-trip", () => {
     },
     { kind: "notify", payload: { direction: "a2c", method: "session/update", params: {} } },
     { kind: "switch-agent", agentId: "codex", config: { mode: "ask" } },
+    {
+      kind: "session-new",
+      payload: { sessionKey: "k1", agentId: "claude-code", label: "tab one" },
+    },
+    {
+      kind: "session-new-result",
+      payload: {
+        sessionKey: "k1",
+        ok: true,
+        agentId: "claude-code",
+        agentSessionId: "as1",
+        agentCapabilities: { foo: 1 },
+        modelCatalog: null,
+        authMethods: [],
+      },
+    },
+    { kind: "session-close", sessionKey: "k1", reason: "user_closed" },
     { kind: "cancel", sessionId: "s1" },
     {
       kind: "permission-prompt",
@@ -154,6 +171,9 @@ describe("encode/decode round-trip", () => {
       "rpc-error",
       "notify",
       "switch-agent",
+      "session-new",
+      "session-new-result",
+      "session-close",
       "cancel",
       "permission-prompt",
       "permission-response",

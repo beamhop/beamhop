@@ -1,0 +1,63 @@
+{
+  "name": "@beamhop/host-orchestrator",
+  "version": "0.0.0",
+  "description": "In-process registry of sandboxes, sessions, and shares for the beamhop desktop host.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beamhop/beamhop.git",
+    "directory": "packages/host-orchestrator"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap --external '@beamhop/*' --external microsandbox --external node-pty --external ws --external '@trystero-p2p/*' && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "keywords": ["beamhop", "orchestrator", "sandbox", "session"],
+  "dependencies": {
+    "@beamhop/acp-p2p": "workspace:*",
+    "@beamhop/acp-server": "workspace:*",
+    "@beamhop/sandbox-exec": "workspace:*",
+    "@beamhop/shell-server": "workspace:*"
+  },
+  "peerDependencies": {
+    "@beamhop/beambox": "*",
+    "@trystero-p2p/firebase": "^0.24.0",
+    "@trystero-p2p/ipfs": "^0.24.0",
+    "@trystero-p2p/mqtt": "^0.24.0",
+    "@trystero-p2p/nostr": "^0.24.0",
+    "@trystero-p2p/supabase": "^0.24.0",
+    "@trystero-p2p/torrent": "^0.24.0",
+    "@trystero-p2p/ws-relay": "^0.24.0",
+    "microsandbox": "*"
+  },
+  "peerDependenciesMeta": {
+    "@trystero-p2p/firebase": { "optional": true },
+    "@trystero-p2p/ipfs": { "optional": true },
+    "@trystero-p2p/mqtt": { "optional": true },
+    "@trystero-p2p/nostr": { "optional": true },
+    "@trystero-p2p/supabase": { "optional": true },
+    "@trystero-p2p/torrent": { "optional": true },
+    "@trystero-p2p/ws-relay": { "optional": true }
+  },
+  "devDependencies": {
+    "@beamhop/beambox": "workspace:*",
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
+    "microsandbox": "*"
+  }
+}

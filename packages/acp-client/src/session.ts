@@ -11,6 +11,7 @@ import {
   type ModelCatalog,
   type PermissionDecision,
   type PermissionPromptPayload,
+  type SessionKey,
   type WireError,
   type WireMessage,
 } from "@beamhop/acp-protocol";
@@ -97,8 +98,54 @@ export interface AcpSession {
   prompt(input: PromptInput, opts?: PromptOptions): PromptStream;
   cancel(): Promise<void>;
   switchAgent(agentId: AgentId): Promise<void>;
+  /**
+   * Open a brand-new agent session inside the SAME gateway connection (and,
+   * when sandboxed, the same microsandbox VM) as the primary session. Useful
+   * for UIs that want to surface multiple concurrent agents (one per tab) on
+   * top of a single transport. Each handle carries its own prompt stream,
+   * model catalog, and slash-command list.
+   *
+   * The primary session — the one negotiated by the initial `hello` — is
+   * always available via the top-level `session.prompt(...)` API; only call
+   * `newSession` to open additional sessions alongside it.
+   */
+  newSession(opts: NewSessionOptions): Promise<SessionHandle>;
   authenticate(methodId: string): Promise<void>;
   startLogin(agentId?: AgentId): Promise<LoginStream>;
+  on<K extends keyof SessionEvents>(
+    event: K,
+    handler: (payload: SessionEvents[K]) => void,
+  ): Unsubscribe;
+  close(reason?: string): Promise<void>;
+}
+
+export interface NewSessionOptions {
+  agentId: AgentId;
+  /** Optional human label, surfaced to the gateway and on `SessionHandle.label`. */
+  label?: string;
+  /** Override the routing key. If omitted, the client generates one. */
+  sessionKey?: SessionKey;
+}
+
+/**
+ * A second-or-Nth agent session piggybacking on the connection. Mirrors the
+ * subset of `AcpSession` that is per-session rather than per-connection:
+ * prompts, model catalog, slash commands, cancel, switch-agent, close.
+ *
+ * Closing a handle terminates only that session's agent subprocess; the
+ * underlying connection (and other handles) stay up.
+ */
+export interface SessionHandle {
+  readonly key: SessionKey;
+  readonly agentId: AgentId;
+  readonly label?: string;
+  readonly agentSessionId: string | null;
+  readonly availableCommands: AvailableCommand[];
+  readonly modelCatalog: ModelCatalog | null;
+  prompt(input: PromptInput, opts?: PromptOptions): PromptStream;
+  cancel(): Promise<void>;
+  setModel(modelId: string): Promise<ModelCatalog>;
+  switchAgent(agentId: AgentId): Promise<void>;
   on<K extends keyof SessionEvents>(
     event: K,
     handler: (payload: SessionEvents[K]) => void,
@@ -136,27 +183,84 @@ interface PendingRequest {
   method: string;
   isPrompt: boolean;
   stream?: PromptStreamImpl;
+  /** Handle whose state owns this request (e.g. activePromptId tracking). */
+  state: HandleState;
+}
+
+const PRIMARY_KEY: SessionKey = "primary";
+
+/**
+ * Per-session state — one of these per agent subprocess on the connection.
+ * The primary handle's state is mirrored onto `Session` directly for back-
+ * compat with the single-session public API.
+ */
+class HandleState {
+  agentId: AgentId;
+  label?: string;
+  agentSessionId: string | null = null;
+  availableCommands: AvailableCommand[] = [];
+  modelCatalog: ModelCatalog | null = null;
+  authMethods: AuthMethod[] = [];
+  activePromptId: string | number | null = null;
+  updateBacklog: unknown[] = [];
+  pendingSetModel = new Map<
+    string,
+    { resolve: (c: ModelCatalog) => void; reject: (e: WireError) => void }
+  >();
+  readonly emitter = new TypedEmitter<SessionEvents>();
+  /** Resolves once this handle has seen its first `ready`/`session-new-result`. */
+  readyPromise: Promise<void>;
+  readyResolve!: () => void;
+  readyReject!: (err: unknown) => void;
+  gotReady = false;
+  closed = false;
+
+  constructor(
+    readonly key: SessionKey,
+    agentId: AgentId,
+    label?: string,
+  ) {
+    this.agentId = agentId;
+    this.label = label;
+    this.readyPromise = new Promise<void>((res, rej) => {
+      this.readyResolve = res;
+      this.readyReject = rej;
+    });
+  }
+
+  resetReady(): void {
+    this.gotReady = false;
+    this.readyPromise = new Promise<void>((res, rej) => {
+      this.readyResolve = res;
+      this.readyReject = rej;
+    });
+  }
 }
 
 export class Session implements AcpSession {
   sessionId: string | null = null;
-  agentId: AgentId;
   availableAgents: AgentDescriptor[] = [];
-  availableCommands: AvailableCommand[] = [];
-  modelCatalog: ModelCatalog | null = null;
-  authMethods: AuthMethod[] = [];
 
   protected readonly transport: Transport;
+  /** Connection-level events (open/close/log/peer joins). */
   protected readonly emitter = new TypedEmitter<SessionEvents>();
   private readonly multiplex: boolean;
   private readonly reconnectable: boolean;
   private readonly role: "observer" | "host-handler";
   private readonly readyTimeoutMs: number;
 
-  private pendingSetModel = new Map<
-    string,
-    { resolve: (c: ModelCatalog) => void; reject: (e: WireError) => void }
+  /** Per-handle state, keyed by sessionKey. The primary handle's key is PRIMARY_KEY. */
+  private readonly handles = new Map<SessionKey, HandleState>();
+  /** The primary handle — bound to the connection lifetime. */
+  private readonly primary: HandleState;
+  /** Pending `newSession` calls awaiting `session-new-result`. */
+  private pendingNewSessions = new Map<
+    SessionKey,
+    { resolve: (h: SessionHandle) => void; reject: (e: WireError) => void }
   >();
+  /** Live secondary handles (excludes primary). */
+  private secondaryHandles = new Map<SessionKey, SessionHandleImpl>();
+
   private pendingLoginStarts = new Map<
     string,
     { resolve: (s: LoginStreamImpl) => void; reject: (e: WireError) => void }
@@ -165,27 +269,41 @@ export class Session implements AcpSession {
   private closed = false;
   private nextRpcId = 1;
   private inflight = new Map<string | number, PendingRequest>();
-  private activePromptId: string | number | null = null;
-  private updateBacklog: unknown[] = [];
-  private readyPromise: Promise<void>;
-  private readyResolve!: () => void;
-  private readyReject!: (err: unknown) => void;
-  private gotReady = false;
 
   constructor(
     protected readonly opts: SessionOptions,
     transport: Transport,
   ) {
-    this.agentId = opts.agent;
     this.transport = transport;
     this.multiplex = transport.capabilities?.multiplex ?? false;
     this.reconnectable = transport.capabilities?.reconnectable ?? false;
     this.role = opts.role ?? (this.multiplex ? "observer" : "host-handler");
     this.readyTimeoutMs = opts.readyTimeoutMs ?? (this.multiplex ? 30_000 : 0);
-    this.readyPromise = new Promise<void>((res, rej) => {
-      this.readyResolve = res;
-      this.readyReject = rej;
-    });
+    this.primary = new HandleState(PRIMARY_KEY, opts.agent);
+    this.handles.set(PRIMARY_KEY, this.primary);
+    // Forward handle events to the connection-level emitter so back-compat
+    // callers using `session.on('update', ...)` see the primary handle's
+    // traffic. Secondary handles route only through their own emitter.
+    this.primary.emitter.on("update", (p) => this.emitter.emit("update", p));
+    this.primary.emitter.on("commands", (c) => this.emitter.emit("commands", c));
+    this.primary.emitter.on("model", (m) => this.emitter.emit("model", m));
+    this.primary.emitter.on("error", (e) => this.emitter.emit("error", e));
+    this.primary.emitter.on("ready", (r) => this.emitter.emit("ready", r));
+    this.primary.emitter.on("auth_required", (r) => this.emitter.emit("auth_required", r));
+  }
+
+  /** Back-compat accessors that mirror the primary handle's state. */
+  get agentId(): AgentId {
+    return this.primary.agentId;
+  }
+  get availableCommands(): AvailableCommand[] {
+    return this.primary.availableCommands;
+  }
+  get modelCatalog(): ModelCatalog | null {
+    return this.primary.modelCatalog;
+  }
+  get authMethods(): AuthMethod[] {
+    return this.primary.authMethods;
   }
 
   async openAndAwaitReady(): Promise<void> {
@@ -206,11 +324,13 @@ export class Session implements AcpSession {
         };
         for (const [, p] of this.pendingLoginStarts) p.reject(closeErr);
         this.pendingLoginStarts.clear();
+        for (const [, p] of this.pendingNewSessions) p.reject(closeErr);
+        this.pendingNewSessions.clear();
         for (const [, s] of this.loginStreams) {
           s.finish({ exitCode: null, reason: "cancelled" });
         }
         this.loginStreams.clear();
-        if (!this.gotReady) this.readyReject(err);
+        if (!this.primary.gotReady) this.primary.readyReject(err);
       }
     });
     this.transport.onOpen?.((info) => {
@@ -226,7 +346,7 @@ export class Session implements AcpSession {
       await this.transport.open();
     } catch (err) {
       // open() failure surfaces as connect rejection.
-      this.readyReject(err);
+      this.primary.readyReject(err);
     }
 
     // For transports without onOpen (or to be safe on first open), send hello
@@ -235,8 +355,8 @@ export class Session implements AcpSession {
 
     if (this.readyTimeoutMs > 0) {
       const timer = setTimeout(() => {
-        if (!this.gotReady) {
-          this.readyReject(
+        if (!this.primary.gotReady) {
+          this.primary.readyReject(
             new Error(
               `Session timed out after ${this.readyTimeoutMs}ms waiting for the ready frame.`,
             ),
@@ -246,14 +366,14 @@ export class Session implements AcpSession {
       const maybeNode = timer as unknown as { unref?: () => void };
       maybeNode.unref?.();
       try {
-        await this.readyPromise;
+        await this.primary.readyPromise;
       } finally {
         clearTimeout(timer);
       }
       return;
     }
 
-    return this.readyPromise;
+    return this.primary.readyPromise;
   }
 
   protected sendHello() {
@@ -266,7 +386,7 @@ export class Session implements AcpSession {
       kind: "hello",
       protocolVersion: PROTOCOL_VERSION,
       clientInfo,
-      agent: this.agentId,
+      agent: this.primary.agentId,
     });
   }
 
@@ -303,36 +423,85 @@ export class Session implements AcpSession {
         // Echo from another peer on multiplex transports — ignore.
         return;
 
-      case "ready":
-        // Re-applying is idempotent — late joiners on multiplex transports
-        // may see the cached replay even though they also drove an initial
-        // handshake.
+      case "ready": {
+        // The gateway sends `ready` only for the primary handle.
+        const state = this.primary;
         this.sessionId = msg.payload.sessionId;
-        this.agentId = msg.payload.agentId;
+        state.agentId = msg.payload.agentId;
         this.availableAgents = msg.payload.availableAgents ?? [];
-        this.modelCatalog = msg.payload.modelCatalog ?? null;
-        this.authMethods = msg.payload.authMethods ?? [];
-        if (this.availableCommands.length > 0) {
-          this.availableCommands = [];
-          this.emitter.emit("commands", this.availableCommands);
+        state.modelCatalog = msg.payload.modelCatalog ?? null;
+        state.authMethods = msg.payload.authMethods ?? [];
+        state.agentSessionId = msg.payload.sessionId;
+        if (state.availableCommands.length > 0) {
+          state.availableCommands = [];
+          state.emitter.emit("commands", state.availableCommands);
         }
-        this.emitter.emit("model", this.modelCatalog);
-        this.emitter.emit("ready", {
+        state.emitter.emit("model", state.modelCatalog);
+        state.emitter.emit("ready", {
           sessionId: msg.payload.sessionId,
           agentId: String(msg.payload.agentId),
           agentCapabilities: msg.payload.agentCapabilities,
           availableAgents: this.availableAgents,
-          authMethods: this.authMethods,
+          authMethods: state.authMethods,
         });
-        if (!this.gotReady) {
-          this.gotReady = true;
-          this.readyResolve();
+        if (!state.gotReady) {
+          state.gotReady = true;
+          state.readyResolve();
         }
         return;
+      }
+
+      case "session-new-result": {
+        const p = msg.payload;
+        const pending = this.pendingNewSessions.get(p.sessionKey);
+        if (!pending) {
+          if (!this.multiplex) {
+            this.emitter.emit("error", {
+              code: "protocol_error",
+              message: `unmatched session-new-result sessionKey=${p.sessionKey}`,
+            });
+          }
+          return;
+        }
+        this.pendingNewSessions.delete(p.sessionKey);
+        if (!p.ok) {
+          pending.reject(p.error);
+          return;
+        }
+        const state = new HandleState(p.sessionKey, p.agentId, this.pendingLabels.get(p.sessionKey));
+        this.pendingLabels.delete(p.sessionKey);
+        state.agentSessionId = p.agentSessionId;
+        state.modelCatalog = p.modelCatalog;
+        state.authMethods = p.authMethods ?? [];
+        state.gotReady = true;
+        state.readyResolve();
+        this.handles.set(p.sessionKey, state);
+        const handle = new SessionHandleImpl(this, state);
+        this.secondaryHandles.set(p.sessionKey, handle);
+        state.emitter.emit("ready", {
+          sessionId: p.agentSessionId,
+          agentId: String(p.agentId),
+          agentCapabilities: p.agentCapabilities,
+          availableAgents: this.availableAgents,
+          authMethods: state.authMethods,
+        });
+        state.emitter.emit("model", state.modelCatalog);
+        pending.resolve(handle);
+        return;
+      }
+
+      case "session-close": {
+        // Server-initiated close (e.g. agent crashed on a secondary slot).
+        const state = this.handles.get(msg.sessionKey);
+        if (!state || state.key === PRIMARY_KEY) return;
+        this.closeHandleState(state);
+        return;
+      }
 
       case "notify": {
+        const state = this.handleFor(msg.sessionKey);
         const { method, params } = msg.payload;
-        this.emitter.emit("update", { method, params });
+        state.emitter.emit("update", { method, params });
         if (method === "session/update") {
           const update = (
             params as
@@ -340,15 +509,15 @@ export class Session implements AcpSession {
               | null
           )?.update;
           if (update?.sessionUpdate === "available_commands_update") {
-            this.availableCommands = update.availableCommands ?? [];
-            this.emitter.emit("commands", this.availableCommands);
+            state.availableCommands = update.availableCommands ?? [];
+            state.emitter.emit("commands", state.availableCommands);
           }
-          const id = this.activePromptId;
+          const id = state.activePromptId;
           if (id !== null) {
             const pending = this.inflight.get(id);
             pending?.stream?.push(params);
           } else {
-            this.updateBacklog.push(params);
+            state.updateBacklog.push(params);
           }
         }
         return;
@@ -367,7 +536,7 @@ export class Session implements AcpSession {
         }
         this.inflight.delete(msg.payload.id);
         if (p.stream) p.stream.close();
-        if (p.isPrompt && this.activePromptId === msg.payload.id) this.activePromptId = null;
+        if (p.isPrompt && p.state.activePromptId === msg.payload.id) p.state.activePromptId = null;
         p.resolve(msg.payload.result);
         return;
       }
@@ -385,10 +554,12 @@ export class Session implements AcpSession {
         }
         this.inflight.delete(msg.payload.id);
         if (p.stream) p.stream.error(msg.payload.error);
-        if (p.isPrompt && this.activePromptId === msg.payload.id) this.activePromptId = null;
+        if (p.isPrompt && p.state.activePromptId === msg.payload.id) p.state.activePromptId = null;
         const msgStr = String(msg.payload.error?.message ?? "");
         if (/auth_required/i.test(msgStr)) {
-          this.emitter.emit("auth_required", { methodIds: this.authMethods.map((m) => m.id) });
+          p.state.emitter.emit("auth_required", {
+            methodIds: p.state.authMethods.map((m) => m.id),
+          });
         }
         p.reject(msg.payload.error);
         return;
@@ -397,7 +568,7 @@ export class Session implements AcpSession {
       case "rpc":
         // Agent → browser RPC. Only host-handler peers respond.
         if (this.role === "host-handler") {
-          void this.handleServerRpc(msg.payload);
+          void this.handleServerRpc(msg.sessionKey, msg.payload);
         }
         return;
 
@@ -410,12 +581,19 @@ export class Session implements AcpSession {
         this.emitter.emit("log", msg.payload);
         return;
 
-      case "error":
-        this.emitter.emit(msg.fatal ? "fatal" : "error", msg.payload);
+      case "error": {
+        if (msg.fatal) {
+          this.emitter.emit("fatal", msg.payload);
+        } else {
+          const state = this.handleFor(msg.sessionKey);
+          state.emitter.emit("error", msg.payload);
+        }
         return;
+      }
 
       case "set-model-result": {
-        const pending = this.pendingSetModel.get(msg.requestId);
+        const state = this.handleFor(msg.sessionKey);
+        const pending = state.pendingSetModel.get(msg.requestId);
         if (!pending) {
           if (!this.multiplex) {
             this.emitter.emit("error", {
@@ -425,10 +603,10 @@ export class Session implements AcpSession {
           }
           return;
         }
-        this.pendingSetModel.delete(msg.requestId);
+        state.pendingSetModel.delete(msg.requestId);
         if (msg.ok) {
-          this.modelCatalog = msg.modelCatalog;
-          this.emitter.emit("model", this.modelCatalog);
+          state.modelCatalog = msg.modelCatalog;
+          state.emitter.emit("model", state.modelCatalog);
           pending.resolve(msg.modelCatalog);
         } else {
           pending.reject({
@@ -440,10 +618,12 @@ export class Session implements AcpSession {
         return;
       }
 
-      case "model-update":
-        this.modelCatalog = msg.modelCatalog;
-        this.emitter.emit("model", this.modelCatalog);
+      case "model-update": {
+        const state = this.handleFor(msg.sessionKey);
+        state.modelCatalog = msg.modelCatalog;
+        state.emitter.emit("model", state.modelCatalog);
         return;
+      }
 
       case "login-ready": {
         const pending = this.pendingLoginStarts.get(msg.requestId);
@@ -485,6 +665,7 @@ export class Session implements AcpSession {
       case "switch-agent":
       case "set-model":
       case "cancel":
+      case "session-new":
         // Client-only kinds. On multiplex transports we may see our own
         // (and other peers') broadcasts echoed back — ignore. On single-
         // producer transports, receiving these from the server is a bug.
@@ -512,15 +693,19 @@ export class Session implements AcpSession {
     }
   }
 
-  private async handleServerRpc(req: {
-    id: string | number;
-    method: string;
-    params?: unknown;
-    direction: "c2a" | "a2c";
-  }) {
+  private async handleServerRpc(
+    sessionKey: SessionKey | undefined,
+    req: {
+      id: string | number;
+      method: string;
+      params?: unknown;
+      direction: "c2a" | "a2c";
+    },
+  ) {
     if (req.direction !== "a2c") {
       this.send({
         kind: "rpc-error",
+        sessionKey,
         payload: { id: req.id, error: { code: -32600, message: "invalid direction" } },
       });
       return;
@@ -528,14 +713,50 @@ export class Session implements AcpSession {
     const h = this.opts.handlers;
     try {
       const result = await dispatchAcpClientMethod(h, req.method, req.params, this.emitter);
-      this.send({ kind: "rpc-result", payload: { id: req.id, result } });
+      this.send({ kind: "rpc-result", sessionKey, payload: { id: req.id, result } });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.send({
         kind: "rpc-error",
+        sessionKey,
         payload: { id: req.id, error: { code: -32603, message } },
       });
     }
+  }
+
+  /** Routing: map an inbound `sessionKey` to its handle state, defaulting to primary. */
+  private handleFor(sessionKey?: SessionKey): HandleState {
+    const key = sessionKey ?? PRIMARY_KEY;
+    return this.handles.get(key) ?? this.primary;
+  }
+
+  /** Wire stamp: PRIMARY_KEY → omit field on the wire (single-session callers). */
+  private stampedKey(state: HandleState): SessionKey | undefined {
+    return state.key === PRIMARY_KEY ? undefined : state.key;
+  }
+
+  /** Tear down a handle's local state — used for both client- and server-initiated closes. */
+  private closeHandleState(state: HandleState) {
+    if (state.closed) return;
+    state.closed = true;
+    // Reject any in-flight requests bound to this handle so callers don't hang.
+    for (const [id, p] of this.inflight) {
+      if (p.state === state) {
+        this.inflight.delete(id);
+        const err: WireError = {
+          code: "session_idle_timeout",
+          message: `session "${state.key}" closed`,
+        };
+        if (p.stream) p.stream.error(err);
+        p.reject(err);
+      }
+    }
+    for (const [, p] of state.pendingSetModel) {
+      p.reject({ code: "session_idle_timeout", message: `session "${state.key}" closed` });
+    }
+    state.pendingSetModel.clear();
+    this.handles.delete(state.key);
+    if (state.key !== PRIMARY_KEY) this.secondaryHandles.delete(state.key);
   }
 
   private async handlePermissionPrompt(payload: PermissionPromptPayload) {
@@ -570,7 +791,40 @@ export class Session implements AcpSession {
   }
 
   prompt(input: PromptInput, opts: PromptOptions = {}): PromptStream {
-    if (this.activePromptId !== null) {
+    return this._prompt(this.primary, input, opts);
+  }
+
+  async cancel(): Promise<void> {
+    this._cancel(this.primary);
+  }
+
+  async switchAgent(agentId: AgentId): Promise<void> {
+    await this._switchAgent(this.primary, agentId);
+  }
+
+  async newSession(opts: NewSessionOptions): Promise<SessionHandle> {
+    const sessionKey = opts.sessionKey ?? `s-${++this.nextRpcId}-${Math.random().toString(36).slice(2, 8)}`;
+    if (this.handles.has(sessionKey)) {
+      throw new Error(`sessionKey "${sessionKey}" is already open`);
+    }
+    // Stash the caller-supplied label so dispatchFrame can pin it on the
+    // HandleState when session-new-result lands. The gateway doesn't echo
+    // labels, so this is the only place to capture it.
+    this.pendingLabels.set(sessionKey, opts.label);
+    return new Promise<SessionHandle>((resolve, reject) => {
+      this.pendingNewSessions.set(sessionKey, { resolve, reject });
+      this.send({
+        kind: "session-new",
+        payload: { sessionKey, agentId: opts.agentId, label: opts.label },
+      });
+    });
+  }
+
+  private pendingLabels = new Map<SessionKey, string | undefined>();
+
+  /** Internal: shared prompt logic for both primary and secondary handles. */
+  _prompt(state: HandleState, input: PromptInput, opts: PromptOptions = {}): PromptStream {
+    if (state.activePromptId !== null) {
       const stream = new PromptStreamImpl();
       const err: WireError = {
         code: "session_already_active",
@@ -584,7 +838,7 @@ export class Session implements AcpSession {
 
     const id = this.genId("p");
     const stream = new PromptStreamImpl();
-    for (const u of this.updateBacklog.splice(0)) stream.push(u);
+    for (const u of state.updateBacklog.splice(0)) stream.push(u);
 
     const resultPromise = new Promise<unknown>((resolve, reject) => {
       this.inflight.set(id, {
@@ -593,12 +847,15 @@ export class Session implements AcpSession {
         method: "session/prompt",
         isPrompt: true,
         stream,
+        state,
       });
     });
 
-    this.activePromptId = id;
+    state.activePromptId = id;
+    const stampedKey = this.stampedKey(state);
     this.send({
       kind: "rpc",
+      sessionKey: stampedKey,
       payload: {
         direction: "c2a",
         id,
@@ -609,7 +866,7 @@ export class Session implements AcpSession {
 
     if (opts.signal) {
       const onAbort = () => {
-        this.send({ kind: "cancel" });
+        this.send({ kind: "cancel", sessionKey: stampedKey });
       };
       if (opts.signal.aborted) onAbort();
       else opts.signal.addEventListener("abort", onAbort, { once: true });
@@ -618,30 +875,51 @@ export class Session implements AcpSession {
     return Object.assign(stream, {
       result: resultPromise,
       cancel: async () => {
-        this.send({ kind: "cancel" });
+        this.send({ kind: "cancel", sessionKey: stampedKey });
       },
     });
   }
 
-  async cancel(): Promise<void> {
-    this.send({ kind: "cancel" });
+  _cancel(state: HandleState): void {
+    this.send({ kind: "cancel", sessionKey: this.stampedKey(state) });
   }
 
-  async switchAgent(agentId: AgentId): Promise<void> {
-    this.agentId = agentId;
-    this.activePromptId = null;
-    this.gotReady = false;
-    this.readyPromise = new Promise<void>((res, rej) => {
-      this.readyResolve = res;
-      this.readyReject = rej;
-    });
-    this.send({ kind: "switch-agent", agentId });
+  async _switchAgent(state: HandleState, agentId: AgentId): Promise<void> {
+    state.agentId = agentId;
+    state.activePromptId = null;
+    state.resetReady();
+    this.send({ kind: "switch-agent", sessionKey: this.stampedKey(state), agentId });
     await new Promise<void>((resolve) => {
-      const off = this.on("ready", () => {
+      const off = state.emitter.on("ready", () => {
         off();
         resolve();
       });
     });
+  }
+
+  async _setModel(state: HandleState, modelId: string): Promise<ModelCatalog> {
+    const requestId =
+      this.multiplex
+        ? `m-${this.nextRpcId++}-${Math.random().toString(36).slice(2, 8)}`
+        : `m-${++this.nextRpcId}`;
+    const promise = new Promise<ModelCatalog>((resolve, reject) => {
+      state.pendingSetModel.set(requestId, { resolve, reject });
+    });
+    this.send({
+      kind: "set-model",
+      sessionKey: this.stampedKey(state),
+      modelId,
+      requestId,
+    });
+    return promise;
+  }
+
+  async _closeHandle(state: HandleState, reason?: string): Promise<void> {
+    if (state.key === PRIMARY_KEY) {
+      throw new Error("the primary session cannot be closed independently; call session.close() instead");
+    }
+    this.send({ kind: "session-close", sessionKey: state.key, reason });
+    this.closeHandleState(state);
   }
 
   async authenticate(methodId: string): Promise<void> {
@@ -652,6 +930,7 @@ export class Session implements AcpSession {
         reject,
         method: "authenticate",
         isPrompt: false,
+        state: this.primary,
       });
       this.send({
         kind: "rpc",
@@ -687,15 +966,7 @@ export class Session implements AcpSession {
   }
 
   async setModel(modelId: string): Promise<ModelCatalog> {
-    const requestId =
-      this.multiplex
-        ? `m-${this.nextRpcId++}-${Math.random().toString(36).slice(2, 8)}`
-        : `m-${++this.nextRpcId}`;
-    const promise = new Promise<ModelCatalog>((resolve, reject) => {
-      this.pendingSetModel.set(requestId, { resolve, reject });
-    });
-    this.send({ kind: "set-model", modelId, requestId });
-    return promise;
+    return this._setModel(this.primary, modelId);
   }
 
   async close(reason = "client_close"): Promise<void> {
@@ -879,6 +1150,54 @@ class LoginStreamImpl implements LoginStream {
         return Promise.resolve({ value: undefined as unknown as string, done: true });
       },
     };
+  }
+}
+
+class SessionHandleImpl implements SessionHandle {
+  constructor(
+    private readonly session: Session,
+    private readonly state: HandleState,
+  ) {}
+
+  get key(): SessionKey {
+    return this.state.key;
+  }
+  get agentId(): AgentId {
+    return this.state.agentId;
+  }
+  get label(): string | undefined {
+    return this.state.label;
+  }
+  get agentSessionId(): string | null {
+    return this.state.agentSessionId;
+  }
+  get availableCommands(): AvailableCommand[] {
+    return this.state.availableCommands;
+  }
+  get modelCatalog(): ModelCatalog | null {
+    return this.state.modelCatalog;
+  }
+
+  prompt(input: PromptInput, opts?: PromptOptions): PromptStream {
+    return this.session._prompt(this.state, input, opts);
+  }
+  async cancel(): Promise<void> {
+    this.session._cancel(this.state);
+  }
+  async setModel(modelId: string): Promise<ModelCatalog> {
+    return this.session._setModel(this.state, modelId);
+  }
+  async switchAgent(agentId: AgentId): Promise<void> {
+    return this.session._switchAgent(this.state, agentId);
+  }
+  on<K extends keyof SessionEvents>(
+    event: K,
+    handler: (payload: SessionEvents[K]) => void,
+  ): Unsubscribe {
+    return this.state.emitter.on(event, handler);
+  }
+  async close(reason?: string): Promise<void> {
+    return this.session._closeHandle(this.state, reason);
   }
 }
 

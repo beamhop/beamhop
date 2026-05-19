@@ -39,6 +39,12 @@ export {
   type ConsoleLoggerOptions,
 } from "./logger.js";
 
+export {
+  createInProcessAcpChannel,
+  type InProcessAcpChannel,
+  type InProcessTransport,
+} from "./in-process.js";
+
 // Adapters live at subpath exports; consumers import from
 // "@beamhop/acp-server/hono" etc. Re-exporting `serveAcp` here as well so
 // the most common quick-start path needs zero subpath knowledge.

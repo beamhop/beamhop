@@ -10,8 +10,14 @@ export type ErrorCode =
 
 export type ControlMessage =
   | { type: "auth"; token: string; cols: number; rows: number }
-  | { type: "ready"; sessionId: string; cols: number; rows: number }
+  | { type: "ready"; sessionId: string; cols: number; rows: number; selfPeerId?: string }
   | { type: "resize"; cols: number; rows: number }
+  /**
+   * Soft input-lock holder broadcast. Host emits when the current holder
+   * changes or when the hold TTL expires (peerId = null). Peers ignore
+   * incoming `holder` frames if they don't support the feature.
+   */
+  | { type: "holder"; peerId: string | null; ttlMs: number }
   | { type: "error"; code: ErrorCode | string; message: string }
   | { type: "close" };
 

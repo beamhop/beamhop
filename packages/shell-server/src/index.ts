@@ -2,14 +2,30 @@ import { generateToken, makeVerifier, type Verifier } from "./auth.js";
 import {
   SharedPtySession,
   defaultPtyOptions,
+  type PtyHandle,
   type PtySessionOptions,
+  type PtySpawn,
+  type PtySpawnOptions,
 } from "./pty-session.js";
 import { startWsTransport, type WsTransport } from "./transport-ws.js";
-import { startP2PTransport, type P2PTransport } from "./transport-p2p.js";
+import {
+  startP2PTransport,
+  type P2PTransport,
+  type P2PTransportOptions,
+} from "./transport-p2p.js";
 import type { StrategyOptions } from "@beamhop/shell-protocol";
 
-export { SharedPtySession, defaultPtyOptions };
-export type { PtySessionOptions, Verifier };
+export { SharedPtySession, defaultPtyOptions, startP2PTransport };
+export type {
+  PtyHandle,
+  PtySessionOptions,
+  PtySpawn,
+  PtySpawnOptions,
+  Verifier,
+  P2PTransport,
+  P2PTransportOptions,
+};
+export { generateToken, makeVerifier } from "./auth.js";
 export type { StrategyName, StrategyOptions } from "@beamhop/shell-protocol";
 
 export type TransportName = "ws" | "p2p";
@@ -44,6 +60,12 @@ export interface ServeShellOptions {
   maxPeers?: number;
   idleTimeoutMs?: number;
   authTimeoutMs?: number;
+  /**
+   * Override how PTYs are launched. Default: `node-pty` on the host. Pass
+   * `createPtySpawn(sandbox)` from `@beamhop/sandbox-exec` to run inside a
+   * microsandbox VM instead.
+   */
+  spawn?: PtySpawn;
   onPeer?: (info: { peer: string; transport: TransportName }) => void;
 }
 
@@ -69,6 +91,7 @@ export async function serveShell(
       cwd: opts.cwd,
       env: opts.env,
       idleTimeoutMs: opts.idleTimeoutMs,
+      spawn: opts.spawn,
     }),
   );
 
