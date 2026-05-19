@@ -100,4 +100,4 @@ across attached peers. The PTY is lazy-spawned on first attach and killed
 
 Requires Bun ≥ 1.2.
 
-MIT.
+Apache-2.0.

@@ -52,4 +52,4 @@ secure WebSockets for non-localhost connections.
 
 Requires Bun ≥ 1.2.
 
-MIT.
+Apache-2.0.

@@ -612,4 +612,4 @@ The snapshot itself is stored by microsandbox; this package only owns the sideca
 
 ## License
 
-Apache 2.0. See [LICENSE](./LICENSE).
+Apache-2.0. See [LICENSE](../../LICENSE).

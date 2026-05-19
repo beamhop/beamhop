@@ -33,3 +33,8 @@ const parsed = decode(url);
 - `encode(invite: Invite): string` — returns a URL fragment beginning with `#`.
 - `decode(input: string | URL): DecodeResult` — accepts a full URL or a bare fragment.
 - `Invite`, `DecodeResult`, `InviteKind` — TypeScript types.
+
+## Related
+
+- [`@beamhop/host-orchestrator`](../host-orchestrator) — produces the share descriptors that feed into `encode()`.
+- [`@beamhop/shell-client`](../shell-client) / [`@beamhop/acp-client`](../acp-client) — consume the decoded invite to dial the host.

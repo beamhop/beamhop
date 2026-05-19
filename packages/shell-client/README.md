@@ -99,4 +99,4 @@ interface ShellConnection {
 `onData` and `onClose` return unsubscribe functions. Call them when your
 component unmounts to avoid leaks.
 
-MIT.
+Apache-2.0.

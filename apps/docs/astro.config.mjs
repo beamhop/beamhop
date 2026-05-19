@@ -35,7 +35,8 @@ export default defineConfig({
           label: "Beambox",
           items: [
             { label: "About", link: "/beambox/" },
-            { label: "Reference", link: "/packages/beambox/" },
+            { label: "beambox", link: "/packages/beambox/" },
+            { label: "sandbox-exec", link: "/packages/sandbox-exec/" },
           ],
         },
         {
@@ -57,6 +58,13 @@ export default defineConfig({
             { label: "acp-client", link: "/packages/acp-client/" },
             { label: "acp-p2p", link: "/packages/acp-p2p/" },
             { label: "acp-relay", link: "/packages/acp-relay/" },
+          ],
+        },
+        {
+          label: "Host glue",
+          items: [
+            { label: "host-orchestrator", link: "/packages/host-orchestrator/" },
+            { label: "invite-link", link: "/packages/invite-link/" },
           ],
         },
       ],

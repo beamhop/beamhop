@@ -59,4 +59,4 @@ type common = { appId?: string; password?: string }
 - `P2P_ACTIONS` — `{ io: "io", ctl: "ctl" }` action namespaces.
 - `PROTOCOL_VERSION` — bump on breaking wire changes.
 
-MIT.
+Apache-2.0.

@@ -27,13 +27,16 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 <CardGrid>
   <Card title="Beambox" icon="seti:docker">
-    Dockerfile-style image builds on top of [microsandbox](https://github.com/microsandbox/microsandbox). Produces reusable VM snapshots, not OCI tarballs. → [Reference](/beamhop/packages/beambox/)
+    Dockerfile-style image builds on top of [microsandbox](https://github.com/microsandbox/microsandbox). Produces reusable VM snapshots, not OCI tarballs. Pair with [sandbox-exec](/beamhop/packages/sandbox-exec/) to spawn processes inside a sandbox. → [Reference](/beamhop/packages/beambox/)
   </Card>
   <Card title="Shell suite" icon="seti:powershell">
     Expose a local shell to browsers over WebSocket or P2P (WebRTC). Four packages that fit together: [protocol](/beamhop/packages/shell-protocol/), [client](/beamhop/packages/shell-client/), [server](/beamhop/packages/shell-server/), [relay](/beamhop/packages/shell-relay/).
   </Card>
   <Card title="ACP suite" icon="seti:typescript">
     Bridge a browser UI to an ACP-compatible coding-agent CLI (Claude Code, Gemini, Codex…). Five packages, two transports — [WebSocket](/beamhop/packages/acp-server/) or [WebRTC P2P](/beamhop/packages/acp-p2p/). → [How it fits together](/beamhop/acp/)
+  </Card>
+  <Card title="Host glue" icon="puzzle">
+    Wire it all together for a desktop host. [host-orchestrator](/beamhop/packages/host-orchestrator/) is one object that owns sandboxes, sessions, and shares; [invite-link](/beamhop/packages/invite-link/) turns a share into a URL.
   </Card>
 </CardGrid>
 
