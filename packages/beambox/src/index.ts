@@ -2,6 +2,7 @@ export {
   SandboxImage,
   ImageRef,
   BuildStepError,
+  BuildCancelledError,
   ImageNotFoundError,
   SandboxExitError,
   ensureRuntime,
@@ -15,6 +16,7 @@ export { parsePortSpec, parseVolumeSpec } from "./image-builder.js";
 export type {
   BuildStep,
   BuildOptions,
+  BuildEvent,
   RunOptions,
   PortMapping,
   PortSpec,

@@ -20,7 +20,13 @@ import {
   type SandboxRecord,
   type SessionRecord,
 } from "@beamhop/host-orchestrator";
-import { SandboxImage, listImages, removeImage } from "@beamhop/beambox";
+import {
+  SandboxImage,
+  listImages,
+  removeImage,
+  BuildCancelledError,
+  type BuildEvent,
+} from "@beamhop/beambox";
 import { Sandbox } from "microsandbox";
 import { builtInAgents } from "@beamhop/acp-server";
 import {
@@ -30,6 +36,9 @@ import {
   projectSandbox,
   projectSession,
   type AgentView,
+  type BuildDetail,
+  type BuildStatus,
+  type BuildView,
   type RpcEvent,
   type RpcOutbound,
   type RpcRequest,
@@ -154,6 +163,211 @@ function broadcast(msg: RpcOutbound) {
   for (const c of clients) send(c.ws, msg);
 }
 
+// ---------- build registry ------------------------------------------------
+//
+// `builds.start` returns a buildId immediately and runs the build in the
+// background. Every BuildEvent from beambox is fanned out as a `build:event`
+// broadcast AND retained on the record so a client that reconnects (or a
+// dialog that closes + reopens) can replay full history via `builds.get`.
+//
+// Lifecycle events (build:start, step:*, build:end/error) are always kept
+// so the timeline stays intact. Stdout/stderr chunks are capped via a
+// per-record cap; once we hit the cap we drop the oldest chunk and
+// flag `truncated`. Completed records get GC'd after a TTL.
+
+const BUILD_STDIO_CAP = 4000;          // max stdout/stderr events per record
+const BUILD_COMPLETED_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const BUILD_RECENT_LIMIT = 20;         // most-recent completed builds kept beyond TTL pressure
+
+interface BuildRecord {
+  buildId: string;
+  tag: string;
+  dockerfile: string;
+  memory: number | undefined;
+  autoBoot: boolean;
+  startedAt: number;
+  endedAt?: number;
+  status: BuildStatus;
+  snapshotName?: string;
+  sandboxId?: string;
+  error?: string;
+  events: BuildEvent[];
+  /** Count of stdout/stderr chunks currently retained (for cap accounting). */
+  stdioCount: number;
+  truncated: boolean;
+  abort: AbortController;
+  gcTimer?: ReturnType<typeof setTimeout>;
+}
+
+const builds = new Map<string, BuildRecord>();
+
+function toBuildView(r: BuildRecord): BuildView {
+  return {
+    buildId: r.buildId,
+    tag: r.tag,
+    dockerfile: r.dockerfile,
+    memory: r.memory,
+    autoBoot: r.autoBoot,
+    startedAt: r.startedAt,
+    endedAt: r.endedAt,
+    status: r.status,
+    snapshotName: r.snapshotName,
+    sandboxId: r.sandboxId,
+    error: r.error,
+  };
+}
+
+function toBuildDetail(r: BuildRecord): BuildDetail {
+  return { ...toBuildView(r), events: r.events.slice(), truncated: r.truncated };
+}
+
+function isStdioEvent(ev: BuildEvent): boolean {
+  return ev.kind === "step:stdout" || ev.kind === "step:stderr";
+}
+
+function appendBuildEvent(r: BuildRecord, ev: BuildEvent): void {
+  if (isStdioEvent(ev)) {
+    if (r.stdioCount >= BUILD_STDIO_CAP) {
+      // Drop the oldest stdio chunk to make room. Walk from the front and
+      // remove the first stdio event we find — lifecycle events stay put so
+      // the timeline keeps its skeleton.
+      for (let i = 0; i < r.events.length; i++) {
+        if (isStdioEvent(r.events[i]!)) {
+          r.events.splice(i, 1);
+          r.stdioCount--;
+          r.truncated = true;
+          break;
+        }
+      }
+    }
+    r.stdioCount++;
+  }
+  r.events.push(ev);
+}
+
+function publishBuildState(r: BuildRecord): void {
+  broadcast({ event: "build:state", data: toBuildView(r) });
+}
+
+function scheduleBuildGc(r: BuildRecord): void {
+  if (r.gcTimer) clearTimeout(r.gcTimer);
+  r.gcTimer = setTimeout(() => {
+    // Hold on to a short tail of recently-completed builds beyond the TTL so
+    // the UI's "recent builds" strip stays populated across longer idle
+    // periods. Older completed records past the limit get dropped.
+    const completed = [...builds.values()]
+      .filter((b) => b.status !== "running")
+      .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0));
+    const keep = new Set(completed.slice(0, BUILD_RECENT_LIMIT).map((b) => b.buildId));
+    if (!keep.has(r.buildId)) builds.delete(r.buildId);
+  }, BUILD_COMPLETED_TTL_MS);
+  // Don't let a pending GC keep the process alive.
+  if (typeof r.gcTimer === "object" && r.gcTimer && "unref" in r.gcTimer) {
+    (r.gcTimer as { unref: () => void }).unref();
+  }
+}
+
+async function startBuild(params: {
+  tag: string;
+  dockerfile: string;
+  memory: number | undefined;
+  autoBoot: boolean;
+}): Promise<{ buildId: string }> {
+  const buildId = randomUUID();
+  const record: BuildRecord = {
+    buildId,
+    tag: params.tag,
+    dockerfile: params.dockerfile,
+    memory: params.memory,
+    autoBoot: params.autoBoot,
+    startedAt: Date.now(),
+    status: "running",
+    events: [],
+    stdioCount: 0,
+    truncated: false,
+    abort: new AbortController(),
+  };
+  builds.set(buildId, record);
+  publishBuildState(record);
+
+  // Run async; surface failures through the record + broadcasts, never bubble.
+  void runBuild(record).catch((err) => {
+    log("internal build error:", errMsg(err));
+  });
+
+  return { buildId };
+}
+
+async function runBuild(record: BuildRecord): Promise<void> {
+  const ctx = await mkdtemp(path.join(os.tmpdir(), "beamhop-build-"));
+  const dockerfilePath = path.join(ctx, "Dockerfile");
+  await writeFile(dockerfilePath, record.dockerfile, "utf8");
+
+  const onEvent = (event: BuildEvent) => {
+    appendBuildEvent(record, event);
+    broadcast({
+      event: "build:event",
+      data: { buildId: record.buildId, event },
+    });
+  };
+
+  try {
+    const img = await SandboxImage.fromDockerfileString(record.dockerfile).build(
+      record.tag,
+      {
+        contextDir: ctx,
+        memory: record.memory,
+        onEvent,
+        signal: record.abort.signal,
+      },
+    );
+    record.snapshotName = img.snapshotName;
+
+    if (record.autoBoot && !record.abort.signal.aborted) {
+      try {
+        const id = await orch.createSandbox(img.snapshotName, {
+          memory: record.memory,
+        });
+        record.sandboxId = id;
+      } catch (err) {
+        // Build succeeded but boot failed — surface as failed so the UI can
+        // act on it. Snapshot still exists for manual boot.
+        record.status = "failed";
+        record.error = `built ${img.snapshotName} but boot failed: ${errMsg(err)}`;
+        record.endedAt = Date.now();
+        publishBuildState(record);
+        scheduleBuildGc(record);
+        return;
+      }
+    }
+
+    record.status = "succeeded";
+    record.endedAt = Date.now();
+    publishBuildState(record);
+    scheduleBuildGc(record);
+  } catch (err) {
+    if (err instanceof BuildCancelledError || record.abort.signal.aborted) {
+      record.status = "cancelled";
+      record.error = "cancelled";
+    } else {
+      record.status = "failed";
+      record.error = errMsg(err);
+    }
+    record.endedAt = Date.now();
+    publishBuildState(record);
+    scheduleBuildGc(record);
+  } finally {
+    await fs.rm(ctx, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+function cancelBuild(buildId: string): void {
+  const r = builds.get(buildId);
+  if (!r) throw new Error(`unknown build: ${buildId}`);
+  if (r.status !== "running") return; // idempotent
+  r.abort.abort();
+}
+
 // ---------- orchestrator wiring ------------------------------------------
 
 const orch = new HostOrchestrator({ rtcPolyfill: RTCPeerConnection });
@@ -243,6 +457,44 @@ async function listAllSandboxes(): Promise<SandboxView[]> {
 }
 
 /**
+ * Best-effort `Sandbox.remove` that copes with the "still running" race in
+ * microsandbox where stop()/kill() returns before the VM's process is fully
+ * reaped. Re-kills and retries with a small back-off; gives up after a
+ * bounded window and throws the last error.
+ */
+async function removeWithRetry(
+  handle: Awaited<ReturnType<typeof Sandbox.get>>,
+  name: string,
+): Promise<void> {
+  if (!handle) return;
+  const attempts = 10;
+  const backoffMs = 150;
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await handle.remove();
+      return;
+    } catch (err) {
+      lastErr = err;
+      const msg = errMsg(err).toLowerCase();
+      // Only retry the specific "still running" race — other failures (e.g.
+      // permission, disk) won't get better with another go.
+      if (!msg.includes("still running") && !msg.includes("running")) {
+        throw err;
+      }
+      try {
+        await handle.kill();
+      } catch {
+        /* keep trying */
+      }
+      await new Promise((r) => setTimeout(r, backoffMs));
+    }
+  }
+  log(`removeWithRetry: gave up on ${name} after ${attempts} attempts`);
+  throw lastErr ?? new Error(`failed to remove sandbox ${name}`);
+}
+
+/**
  * Remove a sandbox by name. For orchestrator-tracked sandboxes, go through
  * `orch.closeSandbox` so sessions and shares get torn down cleanly. For
  * external ones (or non-running), call microsandbox's Sandbox API directly;
@@ -258,18 +510,31 @@ async function removeSandboxByName(name: string, force: boolean): Promise<void> 
   }
 
   // 2) Stop the VM if it's still running, then erase it from disk. The user
-  //    clicked "remove" — they want it gone, not parked.
+  //    clicked "remove" — they want it gone, not parked. We own the machine,
+  //    so we keep escalating (stop → kill → retry remove) until microsandbox
+  //    agrees, rather than surfacing the "still running" race to the UI.
   const handle = await Sandbox.get(name).catch(() => null);
   if (handle) {
-    if (handle.status === "running" || handle.status === "draining") {
-      if (!force) throw new Error("sandbox is running; force required");
+    const isAlive = () =>
+      handle.status === "running" || handle.status === "draining";
+    if (isAlive() && !force) {
+      throw new Error("sandbox is running; force required");
+    }
+    if (isAlive()) {
       try {
         await handle.stop();
       } catch {
-        await handle.kill();
+        /* fall through to kill */
       }
     }
-    await handle.remove();
+    if (isAlive()) {
+      try {
+        await handle.kill();
+      } catch {
+        /* still try remove; microsandbox sometimes recovers */
+      }
+    }
+    await removeWithRetry(handle, name);
   }
 
   // 3) If we removed an external sandbox without going through the
@@ -334,6 +599,30 @@ async function dispatch(
         req.params.dockerfile,
         req.params.memory,
       );
+    }
+    case "builds.start": {
+      return await startBuild({
+        tag: req.params.tag,
+        dockerfile: req.params.dockerfile,
+        memory: req.params.memory,
+        autoBoot: req.params.autoBoot ?? true,
+      });
+    }
+    case "builds.list": {
+      // Newest first; the UI uses this for both the active strip and the
+      // recent-builds tail, slicing as it sees fit.
+      return [...builds.values()]
+        .sort((a, b) => b.startedAt - a.startedAt)
+        .map(toBuildView);
+    }
+    case "builds.get": {
+      const r = builds.get(req.params.buildId);
+      if (!r) throw new Error(`unknown build: ${req.params.buildId}`);
+      return toBuildDetail(r);
+    }
+    case "builds.cancel": {
+      cancelBuild(req.params.buildId);
+      return null;
     }
     case "sandboxes.listImages": {
       const metas = await listImages();

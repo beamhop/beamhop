@@ -6,6 +6,7 @@ import { Image, Sandbox, Snapshot, install as installRuntime, isInstalled } from
 import type { ExecOutput } from "microsandbox";
 import { parseDockerfile } from "./dockerfile-parser.js";
 import type {
+  BuildEvent,
   BuildOptions,
   BuildStep,
   ImageMetadata,
@@ -128,14 +129,21 @@ export class SandboxImage {
     if (this.steps.length === 0) throw new Error("no build steps — call .from(...) first");
     if (this.steps[0]!.kind !== "FROM") throw new Error("first step must be FROM");
 
+    const emit = makeEmit(options.onEvent);
+    const checkAborted = () => {
+      if (options.signal?.aborted) throw new BuildCancelledError();
+    };
+
     const contextDir = path.resolve(options.contextDir ?? process.cwd());
     const digest = await computeDigest(this.steps, contextDir);
     const snapshotName = `${sanitizeTag(tag)}-${digest.slice(0, 12)}`;
+    const baseImage = (this.steps[0] as { kind: "FROM"; image: string }).image;
 
     if (!options.noCache) {
       const cached = await loadMetadata(snapshotName).catch(() => null);
       if (cached && (await snapshotArtifactExists(snapshotName))) {
         log(options, `cache hit: ${snapshotName}`);
+        emit({ kind: "build:start", tag, snapshotName, steps: this.steps.length, cached: true });
         // Refresh createdAt and the user-facing tag so `resolveImage(tag)`'s
         // newest-wins tiebreak lands on the snapshot the caller just asked
         // for. Without this, iterating on a Dockerfile under a stable tag
@@ -152,6 +160,7 @@ export class SandboxImage {
           createdAt: new Date().toISOString(),
         };
         await saveMetadata(refreshed);
+        emit({ kind: "build:end", snapshotName, cached: true });
         return new ImageRef(refreshed);
       }
       if (cached) {
@@ -166,20 +175,27 @@ export class SandboxImage {
       }
     }
 
+    emit({ kind: "build:start", tag, snapshotName, steps: this.steps.length, cached: false });
+    checkAborted();
     if (!options.skipInstall) await ensureRuntime({ quiet: options.quiet });
     log(options, `building ${tag} → snapshot ${snapshotName}`);
     const tempName = `msb-build-${randomId()}`;
-    const baseImage = (this.steps[0] as { kind: "FROM"; image: string }).image;
 
     // Default to 1024 MiB at build time so package installers (bun, npm,
     // apt) don't get OOM-killed mid-resolution. Callers can override.
     const buildMemory = options.memory ?? 1024;
     let sandbox: Sandbox | null = null;
+    let currentStepIndex = -1;
     try {
+      // Step 0 is FROM — emit it as a logical step so the UI sees image
+      // pull + boot as the first row in the timeline.
+      const fromStart = Date.now();
+      emit({ kind: "step:start", index: 0, step: this.steps[0]!, label: `FROM ${baseImage}` });
       sandbox = await Sandbox.builder(tempName)
         .image(baseImage)
         .memory(buildMemory)
         .create();
+      emit({ kind: "step:end", index: 0, exitCode: 0, durationMs: Date.now() - fromStart });
 
       // Seed env/workdir/etc from the base image's OCI config so terminals
       // spawned later see the right PATH (`oven/bun` puts `bun` at
@@ -192,33 +208,69 @@ export class SandboxImage {
       let userCtx: string | null = baseConfig.user;
       let entrypoint: string[] | null = baseConfig.entrypoint;
       let cmd: string[] | null = baseConfig.cmd;
+      const debianFamily = isDebianFamily(baseImage);
 
-      for (const step of this.steps.slice(1)) {
-        switch (step.kind) {
-          case "FROM":
-            throw new Error("multiple FROM directives are not supported");
-          case "ENV":
-            env[step.key] = step.value;
-            break;
-          case "WORKDIR":
-            workdir = step.path;
-            break;
-          case "USER":
-            userCtx = step.user;
-            break;
-          case "ENTRYPOINT":
-            entrypoint = step.argv;
-            break;
-          case "CMD":
-            cmd = step.argv;
-            break;
-          case "RUN":
-            await runStep(sandbox, step.command, env, workdir, userCtx);
-            break;
-          case "COPY":
-          case "ADD":
-            await copyStep(sandbox, contextDir, step.src, step.dst);
-            break;
+      for (let i = 1; i < this.steps.length; i++) {
+        const step = this.steps[i]!;
+        checkAborted();
+        const stepStart = Date.now();
+        currentStepIndex = i;
+        emit({ kind: "step:start", index: i, step, label: labelStep(step) });
+        try {
+          switch (step.kind) {
+            case "FROM":
+              throw new Error("multiple FROM directives are not supported");
+            case "ENV":
+              env[step.key] = step.value;
+              break;
+            case "WORKDIR":
+              workdir = step.path;
+              break;
+            case "USER":
+              userCtx = step.user;
+              break;
+            case "ENTRYPOINT":
+              entrypoint = step.argv;
+              break;
+            case "CMD":
+              cmd = step.argv;
+              break;
+            case "RUN": {
+              // Inject DEBIAN_FRONTEND=noninteractive for this RUN only when
+              // the base image is debian/ubuntu and neither the OCI config
+              // nor an explicit ENV step has set it. Without this, apt
+              // post-install scripts (tzdata, libc6, ...) hang on debconf
+              // prompts inside a non-tty exec, manifesting as a silent stall.
+              // Step-local: we don't persist it into the snapshot's env.
+              const runEnv =
+                debianFamily && env.DEBIAN_FRONTEND === undefined
+                  ? { ...env, DEBIAN_FRONTEND: "noninteractive" }
+                  : env;
+              await runStep(
+                sandbox,
+                step.command,
+                runEnv,
+                workdir,
+                userCtx,
+                i,
+                emit,
+                options.signal,
+              );
+              break;
+            }
+            case "COPY":
+            case "ADD":
+              await copyStep(sandbox, contextDir, step.src, step.dst);
+              break;
+          }
+          emit({ kind: "step:end", index: i, exitCode: 0, durationMs: Date.now() - stepStart });
+        } catch (err) {
+          // Surface the failure as a step:end with non-zero code so timelines
+          // close cleanly, then rethrow for the outer catch to publish
+          // build:error and unwind.
+          const code = err instanceof BuildStepError ? err.exitCode : 1;
+          emit({ kind: "step:end", index: i, exitCode: code, durationMs: Date.now() - stepStart });
+          throw err;
         }
       }
 
@@ -245,7 +297,13 @@ export class SandboxImage {
       };
       await saveMetadata(metadata);
 
+      emit({ kind: "build:end", snapshotName, cached: false });
       return new ImageRef(metadata);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const stepIndex = currentStepIndex >= 0 ? currentStepIndex : undefined;
+      emit({ kind: "build:error", message, stepIndex });
+      throw err;
     } finally {
       if (sandbox !== null) {
         await sandbox.stop().catch(() => {});
@@ -573,19 +631,116 @@ async function runStep(
   env: Record<string, string>,
   workdir: string | null,
   user: string | null,
+  stepIndex: number,
+  emit: (event: BuildEvent) => void,
+  signal: AbortSignal | undefined,
 ): Promise<void> {
-  const result = await sandbox.execWith("/bin/sh", (e) => {
+  // Stream the exec so callers see output chunks in real time. We tee into a
+  // string buffer so a non-zero exit still produces a fully-populated
+  // BuildStepError — existing callers depend on that shape.
+  const handle = await sandbox.execStreamWith("/bin/sh", (e) => {
     let b = e.args(["-c", command]);
     if (Object.keys(env).length > 0) b = b.envs(env);
     if (workdir !== null) b = b.cwd(workdir);
     if (user !== null) b = b.user(user);
     return b;
   });
-  if (result.code !== 0) {
-    const stderr = result.stderr();
-    const stdout = result.stdout();
-    throw new BuildStepError(command, result.code, stdout, stderr);
+
+  let stdoutBuf = "";
+  let stderrBuf = "";
+  let exitCode: number | null = null;
+  const decoder = new TextDecoder("utf-8", { fatal: false });
+
+  // If the caller's signal trips mid-RUN, kill the exec immediately so
+  // the build doesn't hang on a stuck apt-get.
+  const onAbort = () => {
+    void handle.kill().catch(() => {});
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+
+  try {
+    for await (const ev of handle) {
+      if (ev.kind === "stdout") {
+        const text = decoder.decode(ev.data, { stream: true });
+        if (text) {
+          stdoutBuf += text;
+          emit({ kind: "step:stdout", index: stepIndex, text });
+        }
+      } else if (ev.kind === "stderr") {
+        const text = decoder.decode(ev.data, { stream: true });
+        if (text) {
+          stderrBuf += text;
+          emit({ kind: "step:stderr", index: stepIndex, text });
+        }
+      } else if (ev.kind === "exited") {
+        exitCode = ev.code;
+      }
+    }
+    // Flush any partial UTF-8 sequence trapped in the decoder.
+    const tailOut = decoder.decode();
+    if (tailOut) stdoutBuf += tailOut;
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
   }
+
+  if (signal?.aborted) throw new BuildCancelledError(stepIndex);
+  if (exitCode === null) {
+    // The stream closed without an exited event — shouldn't happen, but
+    // treat it as a hard failure rather than silently succeeding.
+    throw new BuildStepError(command, -1, stdoutBuf, stderrBuf);
+  }
+  if (exitCode !== 0) {
+    throw new BuildStepError(command, exitCode, stdoutBuf, stderrBuf);
+  }
+}
+
+function makeEmit(
+  onEvent: ((event: BuildEvent) => void) | undefined,
+): (event: BuildEvent) => void {
+  if (!onEvent) return () => {};
+  return (event) => {
+    try {
+      onEvent(event);
+    } catch {
+      // Swallow consumer errors so a buggy listener can't break the build.
+    }
+  };
+}
+
+function labelStep(step: BuildStep): string {
+  switch (step.kind) {
+    case "FROM":
+      return `FROM ${step.image}`;
+    case "RUN":
+      return `RUN ${truncate(step.command, 80)}`;
+    case "COPY":
+      return `COPY ${step.src} ${step.dst}`;
+    case "ADD":
+      return `ADD ${step.src} ${step.dst}`;
+    case "ENV":
+      return `ENV ${step.key}=${truncate(step.value, 40)}`;
+    case "WORKDIR":
+      return `WORKDIR ${step.path}`;
+    case "USER":
+      return `USER ${step.user}`;
+    case "ENTRYPOINT":
+      return `ENTRYPOINT ${step.argv.join(" ")}`;
+    case "CMD":
+      return `CMD ${step.argv.join(" ")}`;
+  }
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max - 1)}…`;
+}
+
+function isDebianFamily(baseImage: string): boolean {
+  // Match common Debian/Ubuntu lineage tags. Conservative: we'd rather miss
+  // an exotic derivative than inject DEBIAN_FRONTEND into a glibc/alpine
+  // image where it's harmless but misleading.
+  const name = baseImage.toLowerCase();
+  return /(^|\/)(ubuntu|debian)(:|@|$)/.test(name) || /-(ubuntu|debian)\b/.test(name);
 }
 
 /**
@@ -931,6 +1086,22 @@ export class ImageNotFoundError extends Error {
       : `available: ${available.map((n) => n.replace(/\.json$/, "")).join(", ")}`;
     super(`no image found for "${nameOrTag}" — ${hint}`);
     this.name = "ImageNotFoundError";
+  }
+}
+
+/**
+ * Thrown when a build is cancelled via `BuildOptions.signal`. Distinct from
+ * `BuildStepError` so callers can distinguish "user aborted" from "command
+ * failed" without string-matching.
+ */
+export class BuildCancelledError extends Error {
+  constructor(public readonly stepIndex?: number) {
+    super(
+      stepIndex !== undefined
+        ? `build cancelled during step ${stepIndex}`
+        : "build cancelled",
+    );
+    this.name = "BuildCancelledError";
   }
 }
 

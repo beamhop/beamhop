@@ -2,6 +2,7 @@ import { useState } from "react";
 import { encode } from "@beamhop/invite-link";
 import type {
   AgentView,
+  BuildView,
   SandboxView,
   SessionView,
 } from "../../sidecar/protocol.ts";
@@ -12,6 +13,7 @@ export function SessionsPanel({
   api,
   agents,
   sandbox,
+  building,
   sessions,
   activeId,
   shares,
@@ -20,6 +22,7 @@ export function SessionsPanel({
   api: SidecarApi;
   agents: AgentView[];
   sandbox: SandboxView | null;
+  building?: BuildView | null;
   sessions: SessionView[];
   activeId: string | null;
   shares: Map<string, ShareInfo>;
@@ -28,7 +31,9 @@ export function SessionsPanel({
   return (
     <aside className="border-r border-[var(--color-ink)]/15 bg-[var(--color-paper)] flex flex-col min-h-0">
       <Header>sessions</Header>
-      {!sandbox ? (
+      {building ? (
+        <BuildingState build={building} />
+      ) : !sandbox ? (
         <Empty
           title="no sandbox selected"
           detail="pick a sandbox on the left to manage its sessions"
@@ -314,6 +319,62 @@ function Header({ children }: { children: React.ReactNode }) {
         {children}
       </span>
     </div>
+  );
+}
+
+function BuildingState({ build }: { build: BuildView }) {
+  return (
+    <>
+      <div className="px-4 py-3 border-b border-[var(--color-ink)]/10 bg-[var(--color-paper-deep)]">
+        <div
+          className="text-[10px] uppercase tracking-[0.3em] text-[var(--color-rust)] flex items-center gap-2"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
+          <span aria-hidden className="animate-pulse">
+            ●
+          </span>
+          building
+        </div>
+        <div
+          className="text-sm truncate"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
+          {build.tag}
+        </div>
+        <div
+          className="text-[10px] text-[var(--color-ash)]"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
+          {build.buildId}
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2">
+        <div
+          className="px-3 py-6 text-center text-[var(--color-ash)] text-xs"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
+          no sessions until build finishes — watch progress on the right
+        </div>
+      </div>
+      <div className="border-t border-[var(--color-ink)]/15 p-3 space-y-2 bg-[var(--color-paper-deep)]">
+        <button
+          disabled
+          className="w-full text-xs uppercase tracking-[0.25em] px-3 py-2 bg-[var(--color-ink)]/30 text-[var(--color-paper)]/70 cursor-not-allowed"
+          style={{ fontFamily: "var(--font-body)" }}
+          title="waiting for build to finish"
+        >
+          + terminal
+        </button>
+        <button
+          disabled
+          className="w-full text-xs uppercase tracking-[0.25em] px-3 py-2 bg-[var(--color-ink)]/30 text-[var(--color-paper)]/70 cursor-not-allowed"
+          style={{ fontFamily: "var(--font-body)" }}
+          title="waiting for build to finish"
+        >
+          + agent
+        </button>
+      </div>
+    </>
   );
 }
 

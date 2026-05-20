@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ImageView } from "../../sidecar/protocol.ts";
-import type {
-  SidecarApi,
-  SidecarClient,
-} from "../lib/sidecar-client.ts";
+import type { SidecarApi } from "../lib/sidecar-client.ts";
 
 type Mode = "existing" | "build";
 
@@ -21,12 +18,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \\
 
 export function NewSandboxDialog({
   api,
-  client,
   onClose,
+  onBuildStarted,
 }: {
   api: SidecarApi;
-  client: SidecarClient;
   onClose: () => void;
+  onBuildStarted?: (buildId: string) => void;
 }) {
   const [mode, setMode] = useState<Mode>("existing");
   const [images, setImages] = useState<ImageView[]>([]);
@@ -44,15 +41,14 @@ export function NewSandboxDialog({
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [progressLog, setProgressLog] = useState<string[]>([]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busy) onClose();
+      if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, busy]);
+  }, [onClose]);
 
   const refreshImages = async () => {
     setImagesLoading(true);
@@ -121,19 +117,6 @@ export function NewSandboxDialog({
     }
   };
 
-  // Stream build progress events into the visible log.
-  useEffect(() => {
-    const off = client.on("image:progress", (p) => {
-      setProgressLog((cur) => {
-        const line = p.error
-          ? `error: ${p.error}`
-          : p.step ?? (p.done ? "done" : "...");
-        return [...cur, line];
-      });
-    });
-    return () => off();
-  }, [client]);
-
   // Parse the memory field once per render. `undefined` means "use the
   // orchestrator default"; a valid positive integer overrides.
   const parsedMemory: number | undefined = (() => {
@@ -147,28 +130,25 @@ export function NewSandboxDialog({
   const submit = async () => {
     setBusy(true);
     setError(null);
-    setProgressLog([]);
     const memory = memoryInvalid ? undefined : parsedMemory;
     try {
       if (mode === "build") {
-        const { snapshotName } = await api.buildImage(
-          buildTag,
-          dockerfile,
+        // Kick off the build as a background job. Once the sidecar accepts
+        // it we dismiss the dialog — the building row in the sandbox list
+        // takes over from here.
+        const { buildId } = await api.startBuild(buildTag, dockerfile, {
           memory,
-        );
-        // Boot the exact snapshot we just built. Passing buildTag here would
-        // prefix-resolve against every snapshot sharing the tag (the user
-        // typically iterates on the Dockerfile under the same tag), and a
-        // cache hit doesn't refresh createdAt — so the newest-wins tiebreak
-        // can return a stale snapshot whose Dockerfile is different.
-        await api.createSandbox(snapshotName, memory);
+          autoBoot: true,
+        });
+        onBuildStarted?.(buildId);
+        onClose();
       } else {
         const picked = images.find((i) => i.snapshotName === pickedSnapshot);
         if (!picked) throw new Error("pick an image first");
         // Boot from the exact snapshot to avoid prefix-collision ambiguity.
         await api.createSandbox(picked.snapshotName, memory);
+        onClose();
       }
-      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -187,7 +167,7 @@ export function NewSandboxDialog({
   return (
     <div
       className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center px-4"
-      onClick={busy ? undefined : onClose}
+      onClick={onClose}
     >
       <div
         className="bg-[var(--color-paper)] border-2 border-[var(--color-ink)] max-w-2xl w-full max-h-[85vh] flex flex-col shadow-[0_30px_60px_-20px_rgba(0,0,0,0.5)]"
@@ -202,9 +182,9 @@ export function NewSandboxDialog({
           </h2>
           <button
             onClick={onClose}
-            disabled={busy}
-            className="text-[var(--color-ash)] hover:text-[var(--color-ink)] text-xl leading-none disabled:opacity-30"
+            className="text-[var(--color-ash)] hover:text-[var(--color-ink)] text-xl leading-none"
             aria-label="close"
+            title="close"
           >
             ×
           </button>
@@ -228,55 +208,49 @@ export function NewSandboxDialog({
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-          <MemoryField
-            value={memoryInput}
-            onChange={setMemoryInput}
-            invalid={memoryInvalid}
-          />
-          {mode === "existing" ? (
-            <ExistingImagePicker
-              images={images}
-              loading={imagesLoading}
-              loadError={imagesError}
-              picked={pickedSnapshot}
-              onPick={setPickedSnapshot}
-              selected={selected}
-              onToggleSelected={toggleSelected}
-              onSelectAll={selectAll}
-              onClearSelection={clearSelection}
-              onDeleteSelected={() => void deleteImages([...selected])}
-              onDeleteAll={() => void deleteImages(images.map((i) => i.snapshotName))}
-              deleting={deleting}
-              busy={busy}
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-6 py-5 space-y-4">
+            <MemoryField
+              value={memoryInput}
+              onChange={setMemoryInput}
+              invalid={memoryInvalid}
             />
-          ) : (
-            <BuildForm
-              buildTag={buildTag}
-              setBuildTag={setBuildTag}
-              dockerfile={dockerfile}
-              setDockerfile={setDockerfile}
-            />
-          )}
+            {mode === "existing" ? (
+              <ExistingImagePicker
+                images={images}
+                loading={imagesLoading}
+                loadError={imagesError}
+                picked={pickedSnapshot}
+                onPick={setPickedSnapshot}
+                selected={selected}
+                onToggleSelected={toggleSelected}
+                onSelectAll={selectAll}
+                onClearSelection={clearSelection}
+                onDeleteSelected={() => void deleteImages([...selected])}
+                onDeleteAll={() =>
+                  void deleteImages(images.map((i) => i.snapshotName))
+                }
+                deleting={deleting}
+                busy={busy}
+              />
+            ) : (
+              <BuildForm
+                buildTag={buildTag}
+                setBuildTag={setBuildTag}
+                dockerfile={dockerfile}
+                setDockerfile={setDockerfile}
+              />
+            )}
 
-          {progressLog.length > 0 && (
-            <pre
-              className="bg-[var(--color-ink)] text-[var(--color-paper)] p-3 text-[11px] leading-relaxed max-h-32 overflow-y-auto"
-              style={{ fontFamily: "var(--font-terminal)" }}
-              data-testid="build-progress"
-            >
-              {progressLog.join("\n")}
-            </pre>
-          )}
-
-          {error && (
-            <div
-              className="border border-[#dc2626]/40 bg-[#dc2626]/10 text-[#7f1d1d] px-3 py-2 text-xs whitespace-pre-wrap"
-              style={{ fontFamily: "var(--font-body)" }}
-            >
-              {error}
-            </div>
-          )}
+            {error && (
+              <div
+                className="border border-[#dc2626]/40 bg-[#dc2626]/10 text-[#7f1d1d] px-3 py-2 text-xs whitespace-pre-wrap"
+                style={{ fontFamily: "var(--font-body)" }}
+              >
+                {error}
+              </div>
+            )}
+          </div>
         </div>
 
         <footer className="border-t border-[var(--color-ink)]/15 px-6 py-4 flex items-center justify-end gap-3">
@@ -296,7 +270,7 @@ export function NewSandboxDialog({
             data-testid="confirm-create"
           >
             {busy
-              ? "working…"
+              ? "starting…"
               : mode === "build"
                 ? "build + boot →"
                 : "boot →"}

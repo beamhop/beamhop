@@ -8,6 +8,8 @@
 
 import type {
   AgentView,
+  BuildDetail,
+  BuildView,
   ImageView,
   RpcEvent,
   RpcRequest,
@@ -168,6 +170,22 @@ export const api = (c: SidecarClient) => ({
       tag: string;
       snapshotName: string;
     }>,
+  startBuild: (
+    tag: string,
+    dockerfile: string,
+    options: { memory?: number; autoBoot?: boolean } = {},
+  ) =>
+    c.call("builds.start", {
+      tag,
+      dockerfile,
+      memory: options.memory,
+      autoBoot: options.autoBoot,
+    }) as Promise<{ buildId: string }>,
+  listBuilds: () => c.call("builds.list") as Promise<BuildView[]>,
+  getBuild: (buildId: string) =>
+    c.call("builds.get", { buildId }) as Promise<BuildDetail>,
+  cancelBuild: (buildId: string) =>
+    c.call("builds.cancel", { buildId }) as Promise<null>,
   listImages: () => c.call("sandboxes.listImages") as Promise<ImageView[]>,
   removeImages: (snapshotNames: string[]) =>
     c.call("sandboxes.removeImages", { snapshotNames }) as Promise<{

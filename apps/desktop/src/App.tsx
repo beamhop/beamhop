@@ -9,6 +9,7 @@ import {
 } from "./lib/sidecar-client.ts";
 import type {
   AgentView,
+  BuildView,
   SandboxView,
   SessionView,
 } from "../sidecar/protocol.ts";
@@ -31,6 +32,9 @@ export function App() {
   const [sessions, setSessions] = useState<SessionView[]>([]);
   const [agents, setAgents] = useState<AgentView[]>([]);
   const [shares, setShares] = useState<Map<string, ShareInfo>>(new Map());
+  const [builds, setBuilds] = useState<BuildView[]>([]);
+  // activeSandboxId is either a sandbox id or `build:<buildId>` while the
+  // user is watching an in-progress build that hasn't graduated yet.
   const [activeSandboxId, setActiveSandboxId] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
@@ -64,6 +68,13 @@ export function App() {
           kind: "failed",
           error: err instanceof Error ? err.message : String(err),
         });
+      }
+      try {
+        // Builds endpoint may be missing on older sidecars — tolerate failure.
+        const bl = await a.listBuilds();
+        setBuilds(bl);
+      } catch {
+        /* ignore */
       }
     };
     void refresh();
@@ -100,6 +111,15 @@ export function App() {
       client.on("session:closed", (s) =>
         setSessions((cur) => cur.filter((x) => x.id !== s.id)),
       ),
+      client.on("build:state", (state) => {
+        setBuilds((cur) => {
+          const idx = cur.findIndex((b) => b.buildId === state.buildId);
+          if (idx === -1) return [state, ...cur];
+          const out = cur.slice();
+          out[idx] = state;
+          return out;
+        });
+      }),
       client.on("share:state-changed", (d) => {
         setShares((cur) => {
           const next = new Map(cur);
@@ -127,14 +147,35 @@ export function App() {
 
   // -- auto-select first sandbox/session as they arrive --
   useEffect(() => {
+    // Don't clobber a build:<id> selection just because no sandbox matches —
+    // it's pointing at a building row, which has its own validity rules below.
+    const pointsAtBuild = activeSandboxId?.startsWith("build:") ?? false;
     if (!activeSandboxId && sandboxes[0]) setActiveSandboxId(sandboxes[0].id);
     if (
       activeSandboxId &&
+      !pointsAtBuild &&
       !sandboxes.find((s) => s.id === activeSandboxId)
     ) {
       setActiveSandboxId(sandboxes[0]?.id ?? null);
     }
   }, [sandboxes, activeSandboxId]);
+
+  // A `build:<id>` selection only stays valid as long as the build is still
+  // running and hasn't graduated. When the autoBoot sandbox appears, promote
+  // the selection to that sandbox; when the build is cancelled/failed without
+  // a sandbox, fall back to the first available.
+  useEffect(() => {
+    if (!activeSandboxId?.startsWith("build:")) return;
+    const buildId = activeSandboxId.slice("build:".length);
+    const build = builds.find((b) => b.buildId === buildId);
+    if (!build) return;
+    const sandboxIds = new Set(sandboxes.map((s) => s.id));
+    if (build.sandboxId && sandboxIds.has(build.sandboxId)) {
+      setActiveSandboxId(build.sandboxId);
+    } else if (build.status !== "running" && !build.sandboxId) {
+      setActiveSandboxId(sandboxes[0]?.id ?? null);
+    }
+  }, [activeSandboxId, builds, sandboxes]);
 
   useEffect(() => {
     const inActive = sessions.filter((s) => s.sandboxId === activeSandboxId);
@@ -151,10 +192,18 @@ export function App() {
     return <BootScreen state={sidecar} />;
   }
 
-  const activeSandbox = sandboxes.find((s) => s.id === activeSandboxId) ?? null;
-  const sessionsInSandbox = sessions.filter(
-    (s) => s.sandboxId === activeSandboxId,
-  );
+  const activeBuild: BuildView | null = activeSandboxId?.startsWith("build:")
+    ? builds.find(
+        (b) => b.buildId === activeSandboxId.slice("build:".length),
+      ) ?? null
+    : null;
+  const activeSandbox =
+    !activeBuild && activeSandboxId
+      ? sandboxes.find((s) => s.id === activeSandboxId) ?? null
+      : null;
+  const sessionsInSandbox = activeSandbox
+    ? sessions.filter((s) => s.sandboxId === activeSandbox.id)
+    : [];
 
   return (
     <div className="h-screen flex flex-col">
@@ -176,6 +225,7 @@ export function App() {
           api={sidecar.api}
           agents={agents}
           sandbox={activeSandbox}
+          building={activeBuild}
           sessions={sessionsInSandbox}
           activeId={activeSessionId}
           shares={shares}
@@ -186,6 +236,7 @@ export function App() {
           client={sidecar.client}
           sessions={sessions}
           activeId={activeSessionId}
+          activeBuildId={activeBuild?.buildId ?? null}
           shares={shares}
         />
       </div>

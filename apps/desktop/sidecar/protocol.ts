@@ -6,6 +6,42 @@ import type {
   SessionRecord,
   ShareDescriptor,
 } from "@beamhop/host-orchestrator";
+import type { BuildEvent } from "@beamhop/beambox";
+
+export type { BuildEvent };
+
+export type BuildStatus = "running" | "succeeded" | "failed" | "cancelled";
+
+/**
+ * A live or recently-completed image build tracked by the sidecar. Returned
+ * by `builds.list` / `builds.get`. The `events` array is full replay history
+ * (lifecycle events always kept, stdout/stderr capped — see sidecar
+ * registry for the policy).
+ */
+export interface BuildView {
+  buildId: string;
+  tag: string;
+  dockerfile: string;
+  memory?: number;
+  autoBoot: boolean;
+  startedAt: number;
+  endedAt?: number;
+  status: BuildStatus;
+  snapshotName?: string;
+  sandboxId?: string;
+  error?: string;
+}
+
+/** Same shape with the full event log attached. Used by `builds.get`. */
+export interface BuildDetail extends BuildView {
+  events: BuildEvent[];
+  /**
+   * True when the in-memory ring trimmed older stdout/stderr lines.
+   * Lifecycle events (`build:start`, `step:*`, `build:end/error`) are
+   * always preserved.
+   */
+  truncated: boolean;
+}
 
 export type SandboxStatus = "running" | "stopped" | "crashed" | "draining";
 
@@ -72,6 +108,20 @@ export type RpcRequest =
       method: "sandboxes.buildImage";
       params: { tag: string; dockerfile: string; memory?: number };
     }
+  | {
+      id: string;
+      method: "builds.start";
+      params: {
+        tag: string;
+        dockerfile: string;
+        memory?: number;
+        /** Boot a sandbox from the freshly-built snapshot. Default true. */
+        autoBoot?: boolean;
+      };
+    }
+  | { id: string; method: "builds.list" }
+  | { id: string; method: "builds.get"; params: { buildId: string } }
+  | { id: string; method: "builds.cancel"; params: { buildId: string } }
   | { id: string; method: "sandboxes.listImages" }
   | {
       id: string;
@@ -161,7 +211,9 @@ export type RpcEvent =
       event: "acp:closed";
       data: { connectionId: string; code: number; reason: string };
     }
-  | { event: "image:progress"; data: BuildImageProgress };
+  | { event: "image:progress"; data: BuildImageProgress }
+  | { event: "build:event"; data: { buildId: string; event: BuildEvent } }
+  | { event: "build:state"; data: BuildView };
 
 export type RpcInbound = RpcRequest;
 export type RpcOutbound = RpcResponse | RpcEvent;

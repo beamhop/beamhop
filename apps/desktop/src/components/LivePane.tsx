@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SessionView } from "../../sidecar/protocol.ts";
 import type { SidecarApi, SidecarClient } from "../lib/sidecar-client.ts";
 import type { ShareInfo } from "../App.tsx";
+import { BuildLogView } from "./BuildLogView.tsx";
 import { LiveTerminal } from "./LiveTerminal.tsx";
 import { LiveAgent } from "./LiveAgent.tsx";
 
@@ -24,14 +25,47 @@ export function LivePane({
   client,
   sessions,
   activeId,
+  activeBuildId,
   shares,
 }: {
   api: SidecarApi;
   client: SidecarClient;
   sessions: SessionView[];
   activeId: string | null;
+  activeBuildId?: string | null;
   shares: Map<string, ShareInfo>;
 }) {
+  // A build selection short-circuits the session-routing logic entirely.
+  // Mounted-tab bookkeeping below is irrelevant while the user is watching
+  // build output; once the build graduates, App switches activeBuildId back
+  // to null and selects the new sandbox, restoring normal flow.
+  if (activeBuildId) {
+    return (
+      <main
+        className="bg-[#15100a] text-[var(--color-paper)] flex flex-col min-h-0"
+        data-testid="live-build"
+      >
+        <header className="border-b border-[var(--color-rust)]/40 px-5 py-3 flex items-center gap-3">
+          <span
+            className="text-xs uppercase tracking-[0.3em] text-[var(--color-amber)]"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            building
+          </span>
+          <span
+            className="text-[10px] text-[var(--color-paper)]/40"
+            style={{ fontFamily: "var(--font-body)" }}
+          >
+            {activeBuildId}
+          </span>
+        </header>
+        <div className="flex-1 min-h-0 overflow-y-auto bg-[var(--color-paper)] text-[var(--color-ink)]">
+          <BuildLogView buildId={activeBuildId} api={api} client={client} />
+        </div>
+      </main>
+    );
+  }
+
   // Track every session id that has been the active tab at least once. Once
   // present, the entry stays mounted for the life of the session — only its
   // `hidden` flag toggles when the user switches away. Sessions that disappear

@@ -49,7 +49,71 @@ export interface BuildOptions {
    * or a baked Docker image).
    */
   skipInstall?: boolean;
+  /**
+   * Streaming progress hook. Called synchronously for every lifecycle
+   * transition and every chunk of RUN stdout/stderr. Callers re-broadcast
+   * these verbatim to drive live build-log UIs. Errors thrown from the
+   * callback are swallowed so a misbehaving consumer can't break a build.
+   */
+  onEvent?: (event: BuildEvent) => void;
+  /**
+   * Abort signal honored between steps and during RUN streams. When
+   * aborted mid-step, the in-flight `ExecHandle` is killed and the
+   * build throws a `BuildCancelledError`.
+   */
+  signal?: AbortSignal;
 }
+
+/**
+ * Streamed progress emitted by `SandboxImage.build()` via `BuildOptions.onEvent`.
+ * Tagged union so consumers can switch exhaustively.
+ *
+ * - `build:start` — fires once at the top, even on cache hits
+ * - `step:start` / `step:end` — wrap every step (RUN/COPY/ENV/…), index is 0-based
+ * - `step:stdout` / `step:stderr` — only RUN steps, chunks may be partial lines
+ * - `build:end` — final success; `cached=true` when the snapshot already existed
+ * - `build:error` — terminal failure; `stepIndex` set if a specific step blew up
+ */
+export type BuildEvent =
+  | {
+      kind: "build:start";
+      tag: string;
+      snapshotName: string;
+      steps: number;
+      cached: boolean;
+    }
+  | {
+      kind: "step:start";
+      index: number;
+      step: BuildStep;
+      label: string;
+    }
+  | {
+      kind: "step:stdout";
+      index: number;
+      text: string;
+    }
+  | {
+      kind: "step:stderr";
+      index: number;
+      text: string;
+    }
+  | {
+      kind: "step:end";
+      index: number;
+      exitCode: number;
+      durationMs: number;
+    }
+  | {
+      kind: "build:end";
+      snapshotName: string;
+      cached: boolean;
+    }
+  | {
+      kind: "build:error";
+      message: string;
+      stepIndex?: number;
+    };
 
 /** Host → guest port forward. `protocol` defaults to `"tcp"`. */
 export interface PortMapping {
