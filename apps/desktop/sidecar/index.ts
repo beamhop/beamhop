@@ -491,20 +491,38 @@ async function listAllSandboxes(): Promise<SandboxView[]> {
 }
 
 /**
- * Best-effort `Sandbox.remove` that copes with the "still running" race in
- * microsandbox where stop()/kill() returns before the VM's process is fully
- * reaped. Re-kills and retries with a small back-off; gives up after a
- * bounded window and throws the last error.
+ * Best-effort sandbox removal that copes with the DB/process race in
+ * microsandbox: `SandboxHandle.status` is a frozen snapshot captured at
+ * `Sandbox.get` time, and stop()/dispose can return before the VM's process
+ * is fully reaped. Each iteration re-fetches a fresh handle, kills if it's
+ * still alive, and tries `remove()`. Gives up after a bounded window.
+ *
+ * When `force` is false, refuses the first time we observe running/draining
+ * — the caller hasn't opted into killing a live VM.
  */
-async function removeWithRetry(
-  handle: Awaited<ReturnType<typeof Sandbox.get>>,
-  name: string,
-): Promise<void> {
-  if (!handle) return;
-  const attempts = 10;
-  const backoffMs = 150;
+async function removeWithRetry(name: string, force: boolean): Promise<void> {
+  const attempts = 30;
+  const backoffMs = 200;
   let lastErr: unknown;
+  let refused = false;
   for (let i = 0; i < attempts; i++) {
+    const handle = await Sandbox.get(name).catch(() => null);
+    if (!handle) return;
+    const alive =
+      handle.status === "running" || handle.status === "draining";
+    if (alive) {
+      if (!force && !refused) {
+        // Only honor `force=false` on the very first observation; if the
+        // user opted in via force=true, never refuse partway through.
+        refused = true;
+        throw new Error("sandbox is running; force required");
+      }
+      try {
+        await handle.kill();
+      } catch {
+        /* keep trying */
+      }
+    }
     try {
       await handle.remove();
       return;
@@ -513,13 +531,8 @@ async function removeWithRetry(
       const msg = errMsg(err).toLowerCase();
       // Only retry the specific "still running" race — other failures (e.g.
       // permission, disk) won't get better with another go.
-      if (!msg.includes("still running") && !msg.includes("running")) {
+      if (!msg.includes("running")) {
         throw err;
-      }
-      try {
-        await handle.kill();
-      } catch {
-        /* keep trying */
       }
       await new Promise((r) => setTimeout(r, backoffMs));
     }
@@ -530,48 +543,23 @@ async function removeWithRetry(
 
 /**
  * Remove a sandbox by name. For orchestrator-tracked sandboxes, go through
- * `orch.closeSandbox` so sessions and shares get torn down cleanly. For
- * external ones (or non-running), call microsandbox's Sandbox API directly;
- * stop/kill if running, then remove.
+ * `orch.closeSandbox` so sessions and shares get torn down cleanly. Then
+ * defer to `removeWithRetry` to drive the VM to a removable state.
  */
 async function removeSandboxByName(name: string, force: boolean): Promise<void> {
   // 1) If the orchestrator knows about this sandbox, tear down its sessions
   //    and shares cleanly first. `closeSandbox` also disposes the live
-  //    Sandbox handle (no-op for adopted non-owning handles).
+  //    Sandbox handle (no-op for adopted non-owning handles). Note: dispose
+  //    only fires stop() best-effort and does not wait for the VM process
+  //    to fully reap — `removeWithRetry` below handles the race.
   const tracked = orch.listSandboxes().some((r) => r.id === name);
   if (tracked) {
     await orch.closeSandbox(name);
   }
 
-  // 2) Stop the VM if it's still running, then erase it from disk. The user
-  //    clicked "remove" — they want it gone, not parked. We own the machine,
-  //    so we keep escalating (stop → kill → retry remove) until microsandbox
-  //    agrees, rather than surfacing the "still running" race to the UI.
-  const handle = await Sandbox.get(name).catch(() => null);
-  if (handle) {
-    const isAlive = () =>
-      handle.status === "running" || handle.status === "draining";
-    if (isAlive() && !force) {
-      throw new Error("sandbox is running; force required");
-    }
-    if (isAlive()) {
-      try {
-        await handle.stop();
-      } catch {
-        /* fall through to kill */
-      }
-    }
-    if (isAlive()) {
-      try {
-        await handle.kill();
-      } catch {
-        /* still try remove; microsandbox sometimes recovers */
-      }
-    }
-    await removeWithRetry(handle, name);
-  }
+  await removeWithRetry(name, force);
 
-  // 3) If we removed an external sandbox without going through the
+  // 2) If we removed an external sandbox without going through the
   //    orchestrator, no `sandbox:closed` event fired — broadcast one so the
   //    UI updates immediately.
   if (!tracked) {
