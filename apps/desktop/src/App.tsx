@@ -79,6 +79,12 @@ export function App() {
     };
     void refresh();
 
+    // Kick off a background prewarm of the bundled default image so the
+    // first explicit "Create" lands on a cache hit. No-op when the snapshot
+    // already exists. Tolerate failure — the dialog also surfaces a
+    // first-run hint and the build will run on demand either way.
+    void a.prewarmDefaultImage().catch(() => {});
+
     // External sandboxes (created by `msb run`, prior sidecar runs, etc.) do
     // not emit sandbox:created/closed. Poll every 3s so the panel reflects
     // disk reality even when nothing happens on the event channel. Status

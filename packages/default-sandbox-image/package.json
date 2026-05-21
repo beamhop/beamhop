@@ -1,0 +1,27 @@
+{
+  "name": "@beamhop/default-sandbox-image",
+  "version": "0.1.0",
+  "description": "Bundled default sandbox image: phusion/baseimage + zsh + claude + pi + dev essentials.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "image", "README.md"],
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@beamhop/beambox": "workspace:*",
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
+    "microsandbox": "*"
+  }
+}

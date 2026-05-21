@@ -95,8 +95,14 @@ export type RpcRequest =
   | {
       id: string;
       method: "sandboxes.create";
-      params: { imageTag: string; memory?: number };
+      params: { imageTag: string; memory?: number; name?: string };
     }
+  | {
+      id: string;
+      method: "sandboxes.createDefault";
+      params: { name?: string; memory?: number };
+    }
+  | { id: string; method: "sandboxes.prewarmDefault" }
   | { id: string; method: "sandboxes.remove"; params: { id: string } }
   | {
       id: string;

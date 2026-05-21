@@ -117,6 +117,13 @@ export interface CreateSandboxOptions {
   memory?: number;
   /** Guest CPU count. Leave undefined to use the runtime default. */
   cpus?: number;
+  /**
+   * Optional user-supplied display name for the sandbox. Sanitized to
+   * `[a-z0-9-]` and combined with a short random suffix to guarantee
+   * uniqueness; the orchestrator id ends up looking like
+   * `my-name-a3f9b2c1`. Falls back to `sb_<hex>` when absent.
+   */
+  name?: string;
 }
 
 export interface StartAgentOptions {
@@ -197,7 +204,8 @@ export class HostOrchestrator extends EventEmitter {
     opts: CreateSandboxOptions = {},
   ): Promise<string> {
     this.assertOpen();
-    const id = `sb_${randomUUID().slice(0, 8)}`;
+    const suffix = randomUUID().slice(0, 8);
+    const id = opts.name ? `${sanitizeSandboxName(opts.name)}-${suffix}` : `sb_${suffix}`;
     // Resolve once so we can keep the metadata on the record. startTerminal
     // pulls env/workdir from here so PTYs see the image's PATH (e.g.
     // `oven/bun` puts `bun` at /usr/local/bin, not in /usr/bin).
@@ -241,10 +249,25 @@ export class HostOrchestrator extends EventEmitter {
       TERM: "xterm-256color",
       ...sb.image.env,
     };
+    // Prefer the image's SHELL (set via `ENV SHELL=...` in the Dockerfile) so
+    // images that ship a custom shell (zsh + oh-my-zsh, fish, etc.) land the
+    // user in it on terminal open. Fall back to /bin/sh when the image
+    // doesn't declare one. `-l` forces a login shell so rc files
+    // (.zshrc/.bashrc/.profile) source — that's what prints motd, sets the
+    // theme, exports user PATH adjustments, etc.
+    const shell = sb.image.env.SHELL || "/bin/sh";
+    const shellName = shell.slice(shell.lastIndexOf("/") + 1);
+    const args =
+      shellName === "zsh" ||
+      shellName === "bash" ||
+      shellName === "sh" ||
+      shellName === "fish"
+        ? ["-l"]
+        : [];
     const pty = new SharedPtySession(
       defaultPtyOptions({
-        shell: "/bin/sh",
-        args: [],
+        shell,
+        args,
         cwd: sb.image.workdir ?? "/",
         env,
         spawn: createPtySpawn(sb.sandbox as never),
@@ -742,4 +765,19 @@ async function resolveJoinRoom(strategy: StrategyOptions): Promise<JoinRoom> {
       throw new Error(`unknown strategy: ${JSON.stringify(exhaustive)}`);
     }
   }
+}
+
+/**
+ * Coerce a user-supplied sandbox name into the character set microsandbox
+ * accepts. Lowercases, replaces non-`[a-z0-9-]` runs with `-`, trims leading
+ * and trailing `-`, and falls back to `sandbox` if the result is empty.
+ * Capped at 32 chars so the full id (`<name>-<8hex>`) stays compact.
+ */
+export function sanitizeSandboxName(raw: string): string {
+  const slug = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+  return slug || "sandbox";
 }

@@ -19,6 +19,7 @@
         "@beamhop/acp-protocol": "workspace:*",
         "@beamhop/acp-server": "workspace:*",
         "@beamhop/beambox": "workspace:*",
+        "@beamhop/default-sandbox-image": "workspace:*",
         "@beamhop/host-orchestrator": "workspace:*",
         "@beamhop/invite-link": "workspace:*",
         "@beamhop/sandbox-exec": "workspace:*",
@@ -203,6 +204,16 @@
         "microsandbox": "*",
       },
       "peerDependencies": {
+        "microsandbox": "*",
+      },
+    },
+    "packages/default-sandbox-image": {
+      "name": "@beamhop/default-sandbox-image",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@beamhop/beambox": "workspace:*",
+        "@types/bun": "latest",
+        "@types/node": "^22.0.0",
         "microsandbox": "*",
       },
     },
@@ -393,6 +404,8 @@
     "@beamhop/acp-ui": ["@beamhop/acp-ui@workspace:packages/acp-ui"],
 
     "@beamhop/beambox": ["@beamhop/beambox@workspace:packages/beambox"],
+
+    "@beamhop/default-sandbox-image": ["@beamhop/default-sandbox-image@workspace:packages/default-sandbox-image"],
 
     "@beamhop/desktop": ["@beamhop/desktop@workspace:apps/desktop"],
 

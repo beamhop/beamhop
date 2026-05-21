@@ -16,6 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \\
 `,
 };
 
+// Matches DEFAULT_TAG in @beamhop/default-sandbox-image. Used to detect
+// whether the bundled image is already cached so the first-run hint can be
+// suppressed.
+const DEFAULT_IMAGE_TAG = "beamhop-default:v1";
+
 export function NewSandboxDialog({
   api,
   onClose,
@@ -25,6 +30,12 @@ export function NewSandboxDialog({
   onClose: () => void;
   onBuildStarted?: (buildId: string) => void;
 }) {
+  // Default-path state.
+  const [name, setName] = useState("");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [defaultCached, setDefaultCached] = useState<boolean | null>(null);
+
+  // Advanced-path state (preserved verbatim from the previous dialog).
   const [mode, setMode] = useState<Mode>("existing");
   const [images, setImages] = useState<ImageView[]>([]);
   const [imagesLoading, setImagesLoading] = useState(true);
@@ -66,6 +77,10 @@ export function NewSandboxDialog({
         if (cur && list.some((i) => i.snapshotName === cur)) return cur;
         return list[0]?.snapshotName ?? "";
       });
+      // Detect whether the bundled default image already has a snapshot. We
+      // match by tag so a stale per-build snapshot under the same tag still
+      // counts as "cached" — the build pipeline will cache-hit either way.
+      setDefaultCached(list.some((i) => i.tag === DEFAULT_IMAGE_TAG));
     } catch (err) {
       setImagesError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -127,15 +142,30 @@ export function NewSandboxDialog({
   })();
   const memoryInvalid = Number.isNaN(parsedMemory);
 
-  const submit = async () => {
+  const submitDefault = async () => {
+    setBusy(true);
+    setError(null);
+    const memory = memoryInvalid ? undefined : parsedMemory;
+    try {
+      const { buildId } = await api.createDefaultSandbox({
+        name: name.trim() || undefined,
+        memory,
+      });
+      onBuildStarted?.(buildId);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitAdvanced = async () => {
     setBusy(true);
     setError(null);
     const memory = memoryInvalid ? undefined : parsedMemory;
     try {
       if (mode === "build") {
-        // Kick off the build as a background job. Once the sidecar accepts
-        // it we dismiss the dialog — the building row in the sandbox list
-        // takes over from here.
         const { buildId } = await api.startBuild(buildTag, dockerfile, {
           memory,
           autoBoot: true,
@@ -145,8 +175,7 @@ export function NewSandboxDialog({
       } else {
         const picked = images.find((i) => i.snapshotName === pickedSnapshot);
         if (!picked) throw new Error("pick an image first");
-        // Boot from the exact snapshot to avoid prefix-collision ambiguity.
-        await api.createSandbox(picked.snapshotName, memory);
+        await api.createSandbox(picked.snapshotName, memory, name.trim() || undefined);
         onClose();
       }
     } catch (err) {
@@ -156,7 +185,8 @@ export function NewSandboxDialog({
     }
   };
 
-  const canSubmit =
+  const canSubmitDefault = !busy && !deleting && name.trim().length > 0;
+  const canSubmitAdvanced =
     !busy &&
     !deleting &&
     !memoryInvalid &&
@@ -190,57 +220,85 @@ export function NewSandboxDialog({
           </button>
         </header>
 
-        <div className="border-b border-[var(--color-ink)]/15 px-6 flex">
-          {(["existing", "build"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              disabled={busy}
-              className={`px-4 py-3 text-[10px] uppercase tracking-[0.3em] border-b-2 disabled:opacity-50 ${
-                mode === m
-                  ? "border-[var(--color-amber)] text-[var(--color-ink)]"
-                  : "border-transparent text-[var(--color-ash)] hover:text-[var(--color-ink)]"
-              }`}
-              style={{ fontFamily: "var(--font-body)" }}
-            >
-              {m === "existing" ? "boot existing image" : "build from dockerfile"}
-            </button>
-          ))}
-        </div>
-
         <div className="flex-1 overflow-y-auto">
-          <div className="px-6 py-5 space-y-4">
-            <MemoryField
-              value={memoryInput}
-              onChange={setMemoryInput}
-              invalid={memoryInvalid}
+          <div className="px-6 py-5 space-y-5">
+            <NameField
+              value={name}
+              onChange={setName}
+              onSubmit={() => {
+                if (canSubmitDefault && !advancedOpen) void submitDefault();
+              }}
+              defaultCached={defaultCached}
             />
-            {mode === "existing" ? (
-              <ExistingImagePicker
-                images={images}
-                loading={imagesLoading}
-                loadError={imagesError}
-                picked={pickedSnapshot}
-                onPick={setPickedSnapshot}
-                selected={selected}
-                onToggleSelected={toggleSelected}
-                onSelectAll={selectAll}
-                onClearSelection={clearSelection}
-                onDeleteSelected={() => void deleteImages([...selected])}
-                onDeleteAll={() =>
-                  void deleteImages(images.map((i) => i.snapshotName))
-                }
-                deleting={deleting}
-                busy={busy}
-              />
-            ) : (
-              <BuildForm
-                buildTag={buildTag}
-                setBuildTag={setBuildTag}
-                dockerfile={dockerfile}
-                setDockerfile={setDockerfile}
-              />
+
+            {!advancedOpen && (
+              <div className="flex items-center justify-end">
+                <button
+                  onClick={submitDefault}
+                  disabled={!canSubmitDefault}
+                  className="text-xs uppercase tracking-[0.25em] px-4 py-2 bg-[var(--color-ink)] text-[var(--color-paper)] hover:bg-[var(--color-amber)] hover:text-[var(--color-ink)] disabled:opacity-50 transition-colors"
+                  style={{ fontFamily: "var(--font-body)" }}
+                  data-testid="confirm-create-default"
+                >
+                  {busy ? "starting…" : "create →"}
+                </button>
+              </div>
             )}
+
+            <AdvancedDisclosure
+              open={advancedOpen}
+              onToggle={() => setAdvancedOpen((v) => !v)}
+            >
+              <div className="space-y-4">
+                <ModeTabs mode={mode} setMode={setMode} busy={busy} />
+                <MemoryField
+                  value={memoryInput}
+                  onChange={setMemoryInput}
+                  invalid={memoryInvalid}
+                />
+                {mode === "existing" ? (
+                  <ExistingImagePicker
+                    images={images}
+                    loading={imagesLoading}
+                    loadError={imagesError}
+                    picked={pickedSnapshot}
+                    onPick={setPickedSnapshot}
+                    selected={selected}
+                    onToggleSelected={toggleSelected}
+                    onSelectAll={selectAll}
+                    onClearSelection={clearSelection}
+                    onDeleteSelected={() => void deleteImages([...selected])}
+                    onDeleteAll={() =>
+                      void deleteImages(images.map((i) => i.snapshotName))
+                    }
+                    deleting={deleting}
+                    busy={busy}
+                  />
+                ) : (
+                  <BuildForm
+                    buildTag={buildTag}
+                    setBuildTag={setBuildTag}
+                    dockerfile={dockerfile}
+                    setDockerfile={setDockerfile}
+                  />
+                )}
+                <div className="flex items-center justify-end">
+                  <button
+                    onClick={submitAdvanced}
+                    disabled={!canSubmitAdvanced}
+                    className="text-xs uppercase tracking-[0.25em] px-4 py-2 bg-[var(--color-ink)] text-[var(--color-paper)] hover:bg-[var(--color-amber)] hover:text-[var(--color-ink)] disabled:opacity-50 transition-colors"
+                    style={{ fontFamily: "var(--font-body)" }}
+                    data-testid="confirm-create"
+                  >
+                    {busy
+                      ? "starting…"
+                      : mode === "build"
+                        ? "build + boot →"
+                        : "boot →"}
+                  </button>
+                </div>
+              </div>
+            </AdvancedDisclosure>
 
             {error && (
               <div
@@ -260,23 +318,105 @@ export function NewSandboxDialog({
             className="text-xs uppercase tracking-[0.25em] px-3 py-2 text-[var(--color-ash)] hover:text-[var(--color-ink)] disabled:opacity-30"
             style={{ fontFamily: "var(--font-body)" }}
           >
-            cancel
-          </button>
-          <button
-            onClick={submit}
-            disabled={!canSubmit}
-            className="text-xs uppercase tracking-[0.25em] px-4 py-2 bg-[var(--color-ink)] text-[var(--color-paper)] hover:bg-[var(--color-amber)] hover:text-[var(--color-ink)] disabled:opacity-50 transition-colors"
-            style={{ fontFamily: "var(--font-body)" }}
-            data-testid="confirm-create"
-          >
-            {busy
-              ? "starting…"
-              : mode === "build"
-                ? "build + boot →"
-                : "boot →"}
+            close
           </button>
         </footer>
       </div>
+    </div>
+  );
+}
+
+function NameField({
+  value,
+  onChange,
+  onSubmit,
+  defaultCached,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  defaultCached: boolean | null;
+}) {
+  return (
+    <div>
+      <FieldLabel>name</FieldLabel>
+      <input
+        autoFocus
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSubmit();
+        }}
+        placeholder="my-sandbox"
+        className="w-full bg-[var(--color-paper-deep)] border border-[var(--color-ink)]/30 px-3 py-2 focus:outline-none focus:border-[var(--color-amber)]"
+        style={{ fontFamily: "var(--font-terminal)" }}
+        data-testid="sandbox-name-input"
+      />
+      {defaultCached === false && (
+        <p
+          className="mt-2 text-[10px] text-[var(--color-ash)]"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
+          first sandbox builds your environment — takes a few minutes, cached
+          afterwards.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AdvancedDisclosure({
+  open,
+  onToggle,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border-t border-[var(--color-ink)]/15 pt-4">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="text-[10px] uppercase tracking-[0.3em] text-[var(--color-ash)] hover:text-[var(--color-ink)] flex items-center gap-2"
+        style={{ fontFamily: "var(--font-body)" }}
+        data-testid="advanced-toggle"
+      >
+        <span>{open ? "▾" : "▸"}</span>
+        <span>advanced</span>
+      </button>
+      {open && <div className="mt-4">{children}</div>}
+    </div>
+  );
+}
+
+function ModeTabs({
+  mode,
+  setMode,
+  busy,
+}: {
+  mode: Mode;
+  setMode: (m: Mode) => void;
+  busy: boolean;
+}) {
+  return (
+    <div className="flex border-b border-[var(--color-ink)]/15">
+      {(["existing", "build"] as const).map((m) => (
+        <button
+          key={m}
+          onClick={() => setMode(m)}
+          disabled={busy}
+          className={`px-4 py-2 text-[10px] uppercase tracking-[0.3em] border-b-2 disabled:opacity-50 ${
+            mode === m
+              ? "border-[var(--color-amber)] text-[var(--color-ink)]"
+              : "border-transparent text-[var(--color-ash)] hover:text-[var(--color-ink)]"
+          }`}
+          style={{ fontFamily: "var(--font-body)" }}
+        >
+          {m === "existing" ? "boot existing image" : "build from dockerfile"}
+        </button>
+      ))}
     </div>
   );
 }
@@ -310,6 +450,19 @@ function ExistingImagePicker({
   deleting: boolean;
   busy: boolean;
 }) {
+  // Inline "arm-then-fire" confirmation. window.confirm() is not reliable in
+  // Tauri webviews — it silently returns false — so we use a two-click flow
+  // gated on local state. The armed button auto-disarms after 3s.
+  const [armed, setArmed] = useState<"selected" | "all" | null>(null);
+  const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (armTimerRef.current) clearTimeout(armTimerRef.current);
+    },
+    [],
+  );
+
   if (loading) {
     return (
       <p
@@ -347,19 +500,6 @@ function ExistingImagePicker({
   const disabled = deleting || busy;
   const allChecked = selected.size === images.length;
   const someChecked = selected.size > 0;
-
-  // Inline "arm-then-fire" confirmation. window.confirm() is not reliable in
-  // Tauri webviews — it silently returns false — so we use a two-click flow
-  // gated on local state. The armed button auto-disarms after 3s.
-  const [armed, setArmed] = useState<"selected" | "all" | null>(null);
-  const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (armTimerRef.current) clearTimeout(armTimerRef.current);
-    },
-    [],
-  );
 
   const armOrFire = (which: "selected" | "all") => {
     if (armed === which) {

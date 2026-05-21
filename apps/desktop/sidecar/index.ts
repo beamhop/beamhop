@@ -28,6 +28,11 @@ import {
   type BuildEvent,
 } from "@beamhop/beambox";
 import { Sandbox } from "microsandbox";
+import {
+  DEFAULT_TAG as DEFAULT_IMAGE_TAG,
+  DEFAULT_DOCKERFILE as DEFAULT_IMAGE_DOCKERFILE,
+  getDefaultContextDir as getDefaultImageContextDir,
+} from "@beamhop/default-sandbox-image";
 import { builtInAgents } from "@beamhop/acp-server";
 import {
   joinRoom as joinNostrRoom,
@@ -185,6 +190,19 @@ interface BuildRecord {
   dockerfile: string;
   memory: number | undefined;
   autoBoot: boolean;
+  /**
+   * Sandbox name passed through to `orch.createSandbox` when `autoBoot` is
+   * true. Lets the friendly-name UX surface the user's chosen name on the
+   * sandbox itself instead of an auto-generated `sb_<hex>`.
+   */
+  sandboxName?: string;
+  /**
+   * Optional pre-existing build context directory (e.g. the bundled default
+   * image's `image/` folder). When set, `runBuild` feeds it straight to
+   * `SandboxImage.build()` and skips its tmpdir/cleanup logic. When absent,
+   * `runBuild` materializes the dockerfile into a tmpdir as before.
+   */
+  contextDir?: string;
   startedAt: number;
   endedAt?: number;
   status: BuildStatus;
@@ -272,6 +290,8 @@ async function startBuild(params: {
   dockerfile: string;
   memory: number | undefined;
   autoBoot: boolean;
+  sandboxName?: string;
+  contextDir?: string;
 }): Promise<{ buildId: string }> {
   const buildId = randomUUID();
   const record: BuildRecord = {
@@ -280,6 +300,8 @@ async function startBuild(params: {
     dockerfile: params.dockerfile,
     memory: params.memory,
     autoBoot: params.autoBoot,
+    sandboxName: params.sandboxName,
+    contextDir: params.contextDir,
     startedAt: Date.now(),
     status: "running",
     events: [],
@@ -299,9 +321,18 @@ async function startBuild(params: {
 }
 
 async function runBuild(record: BuildRecord): Promise<void> {
-  const ctx = await mkdtemp(path.join(os.tmpdir(), "beamhop-build-"));
-  const dockerfilePath = path.join(ctx, "Dockerfile");
-  await writeFile(dockerfilePath, record.dockerfile, "utf8");
+  // Two context paths:
+  //  - `record.contextDir` set (bundled image): use it as-is, never clean up.
+  //  - otherwise: materialize a tmpdir holding just the Dockerfile.
+  const ownsContext = record.contextDir === undefined;
+  let ctx: string;
+  if (ownsContext) {
+    ctx = await mkdtemp(path.join(os.tmpdir(), "beamhop-build-"));
+    const dockerfilePath = path.join(ctx, "Dockerfile");
+    await writeFile(dockerfilePath, record.dockerfile, "utf8");
+  } else {
+    ctx = record.contextDir!;
+  }
 
   const onEvent = (event: BuildEvent) => {
     appendBuildEvent(record, event);
@@ -327,6 +358,7 @@ async function runBuild(record: BuildRecord): Promise<void> {
       try {
         const id = await orch.createSandbox(img.snapshotName, {
           memory: record.memory,
+          name: record.sandboxName,
         });
         record.sandboxId = id;
       } catch (err) {
@@ -357,7 +389,9 @@ async function runBuild(record: BuildRecord): Promise<void> {
     publishBuildState(record);
     scheduleBuildGc(record);
   } finally {
-    await fs.rm(ctx, { recursive: true, force: true }).catch(() => {});
+    if (ownsContext) {
+      await fs.rm(ctx, { recursive: true, force: true }).catch(() => {});
+    }
   }
 }
 
@@ -573,8 +607,28 @@ async function dispatch(
     case "sandboxes.create": {
       const id = await orch.createSandbox(req.params.imageTag, {
         memory: req.params.memory,
+        name: req.params.name,
       });
       return { id };
+    }
+    case "sandboxes.createDefault": {
+      return await startBuild({
+        tag: DEFAULT_IMAGE_TAG,
+        dockerfile: DEFAULT_IMAGE_DOCKERFILE,
+        contextDir: getDefaultImageContextDir(),
+        memory: req.params.memory,
+        autoBoot: true,
+        sandboxName: req.params.name,
+      });
+    }
+    case "sandboxes.prewarmDefault": {
+      return await startBuild({
+        tag: DEFAULT_IMAGE_TAG,
+        dockerfile: DEFAULT_IMAGE_DOCKERFILE,
+        contextDir: getDefaultImageContextDir(),
+        memory: undefined,
+        autoBoot: false,
+      });
     }
     case "sandboxes.remove": {
       await removeSandboxByName(req.params.id, true);
@@ -608,6 +662,7 @@ async function dispatch(
         autoBoot: req.params.autoBoot ?? true,
       });
     }
+
     case "builds.list": {
       // Newest first; the UI uses this for both the active strip and the
       // recent-builds tail, slicing as it sees fit.

@@ -1,0 +1,8 @@
+
+  beamhop sandbox — phusion/baseimage (ubuntu 24.04)
+  ─────────────────────────────────────────────
+  preinstalled: claude · pi · bun · node · git · vim · tmux
+  user: dev (passwordless sudo) · shell: zsh + oh-my-zsh
+
+  first run: `claude login` / `pi auth` to sign in.
+

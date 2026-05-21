@@ -158,8 +158,17 @@ export function createSidecarClient(port: number): SidecarClient {
 // method strings and the cast at every callsite.
 export const api = (c: SidecarClient) => ({
   listSandboxes: () => c.call("sandboxes.list") as Promise<SandboxView[]>,
-  createSandbox: (imageTag: string, memory?: number) =>
-    c.call("sandboxes.create", { imageTag, memory }) as Promise<{ id: string }>,
+  createSandbox: (imageTag: string, memory?: number, name?: string) =>
+    c.call("sandboxes.create", { imageTag, memory, name }) as Promise<{
+      id: string;
+    }>,
+  createDefaultSandbox: (opts: { name?: string; memory?: number } = {}) =>
+    c.call("sandboxes.createDefault", {
+      name: opts.name,
+      memory: opts.memory,
+    }) as Promise<{ buildId: string }>,
+  prewarmDefaultImage: () =>
+    c.call("sandboxes.prewarmDefault") as Promise<{ buildId: string }>,
   removeSandbox: (id: string) => c.call("sandboxes.remove", { id }),
   removeManySandboxes: (ids: string[], force = false) =>
     c.call("sandboxes.removeMany", { ids, force }) as Promise<{
