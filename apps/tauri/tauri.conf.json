@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "identifier": "com.beamhop.app",
   "build": {
-    "beforeDevCommand": "bun --filter @beamhop/web dev",
+    "beforeDevCommand": "bun --filter @beamhop/host dev",
     "beforeBuildCommand": "bun run prepare:tauri",
-    "devUrl": "http://localhost:5180",
-    "frontendDist": "../web/dist"
+    "devUrl": "http://127.0.0.1:5179",
+    "frontendDist": "http://127.0.0.1:5179"
   },
   "app": {
     "windows": [

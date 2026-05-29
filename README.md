@@ -8,8 +8,8 @@ control surface with a web UI and (eventually) a Tauri shell.
 ```
 .
 ├── apps/
-│   ├── host/    # @beamhop/host  — Bun HTTP+WS server, bridges pi RPC ↔ browser
-│   ├── web/     # @beamhop/web   — React UI for chat / inspector / palette
+│   ├── host/    # @beamhop/host  — Bun fullstack server: serves the React UI
+│   │            #                  AND bridges pi RPC ↔ browser; web/ lives here
 │   └── tauri/   # desktop shell  (placeholder — binaries land in tauri/binaries/)
 ├── packages/
 │   └── protocol/  # @beamhop/protocol — JSONL framing + wire alias mapper
@@ -34,27 +34,25 @@ This wires up all workspaces, including the `workspace:*` link from
 
 ## Common scripts (run from repo root)
 
-| Command            | What it does                                                     |
-|--------------------|------------------------------------------------------------------|
-| `bun run dev`      | Hot-reload the host directly (`apps/host/src/server.ts`)         |
-| `bun run dev:host` | Same, via the host workspace                                     |
-| `bun run dev:web`  | Vite dev server for the React UI (port 5180, proxies `/rpc` → host) |
-| `bun run build:web`| Build the React UI to `apps/web/dist/` — the host serves this    |
-| `bun run build:host`| `bun build --compile` the host into `apps/tauri/binaries/pi-rpc-host` |
-| `bun test`         | Run all workspace tests                                          |
+| Command             | What it does                                                          |
+|---------------------|----------------------------------------------------------------------|
+| `bun run dev`       | Hot-reload the host (`apps/host/src/server.ts`) — serves UI + `/rpc` on `:5179`, with Bun HMR for the React app |
+| `bun run build:host`| Bundle the host + UI into `apps/host/dist/` (self-contained)         |
+| `bun test`          | Run all workspace tests                                              |
 
 ## Typical dev loop
 
+One process now serves both the UI and the WebSocket — no Vite, no proxy.
+
 1. Start microsandbox and note the sandbox name.
-2. `bun run dev:web` — Vite at <http://localhost:5180>.
-3. `bun run dev:host` — host at `:5179`; Vite proxies `/rpc` to it.
-4. Open the UI, supply your sandbox name in the prompt.
+2. `bun run dev` — host at <http://127.0.0.1:5179>; Bun bundles the React UI on
+   the fly with hot-module reload and echoes browser console logs to the terminal.
+3. Open the UI, supply your sandbox name in the prompt.
 
 Each package has its own README with deeper detail.
 
 ## Packages
 
-- [`apps/host`](./apps/host/README.md) — the Bun WebSocket host
-- [`apps/web`](./apps/web/README.md) — the React UI
+- [`apps/host`](./apps/host/README.md) — the Bun fullstack host (server + React UI)
 - [`apps/tauri`](./apps/tauri/README.md) — desktop shell (placeholder)
 - [`packages/protocol`](./packages/protocol/README.md) — shared wire helpers

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CMD_SOURCE, type CmdSource } from "../data/commands";
+import { fuzzyMatch } from "../utils/fuzzyMatch";
 
 export interface PaletteItem {
   id: string;
@@ -34,18 +35,11 @@ export function CommandPalette({ open, onClose, items }: CommandPaletteProps) {
   }, [open]);
 
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+    const needle = q.trim();
     if (!needle) return items;
-    return items.filter((it) => {
-      const hay = (it.label + " " + (it.hint ?? "") + " " + it.group).toLowerCase();
-      if (hay.includes(needle)) return true;
-      let i = 0;
-      for (const ch of hay) {
-        if (ch === needle[i]) i++;
-        if (i === needle.length) return true;
-      }
-      return false;
-    });
+    return items.filter((it) =>
+      fuzzyMatch(needle, it.label + " " + (it.hint ?? "") + " " + it.group),
+    );
   }, [q, items]);
 
   useEffect(() => setSel(0), [q]);

@@ -1,5 +1,10 @@
 import type { PiModel } from "./data/models";
 
+// The canonical session-summary shape lives in the shared protocol package
+// so host and web can't drift. Re-exported here so existing `../types`
+// importers keep working.
+export type { SessionSummary } from "@beamhop/protocol";
+
 export interface Session {
   id: string;
   name: string;
@@ -10,21 +15,6 @@ export interface Session {
   cost: number;
   msgs: number;
   active?: boolean;
-}
-
-/**
- * Real session summary as reported by the host's `list_sessions` (which
- * walks `~/.pi/agent/sessions/` inside the sandbox). The `path` is the
- * canonical id pi's `switch_session` command accepts.
- */
-export interface SessionSummary {
-  path: string;
-  sessionId: string | null;
-  title: string;
-  cwd: string;
-  updatedAt: number | null;
-  messageCount: number;
-  sizeBytes: number;
 }
 
 export interface TreeNode {

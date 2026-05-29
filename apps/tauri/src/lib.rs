@@ -32,11 +32,9 @@ pub fn run() {
             let staged = resource_dir.join("resources");
             let host_dir = staged.join("host");
             let server_js = host_dir.join("server.js");
-            let web_dir = staged.join("web").join("dist");
 
             eprintln!("[host:setup] cwd = {}", host_dir.display());
             eprintln!("[host:setup] js  = {}", server_js.display());
-            eprintln!("[host:setup] web = {}", web_dir.display());
 
             // Surface staging/bundling failures loudly at startup. Without this
             // the sidecar spawn fails deep in the OS layer and the user just
@@ -50,7 +48,6 @@ pub fn run() {
                 .join("msb");
             for (label, path) in [
                 ("server.js", &server_js),
-                ("web dist", &web_dir),
                 ("msb binary", &msb_bin),
             ] {
                 if !path.exists() {
@@ -72,10 +69,12 @@ pub fn run() {
                     return Ok(());
                 }
             };
+            // The host now serves the UI itself (bundled into server.js) on
+            // port 5179; the webview loads from http://127.0.0.1:5179, so no
+            // separate web dir env is needed.
             let spawned = sidecar
                 .args(["server.js"])
                 .current_dir(&host_dir)
-                .env("BEAMHOP_WEB_DIR", web_dir.to_string_lossy().to_string())
                 .spawn();
             let (mut rx, child) = match spawned {
                 Ok(pair) => pair,

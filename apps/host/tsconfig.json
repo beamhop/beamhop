@@ -15,7 +15,7 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
-    "types": ["vite/client", "bun"]
+    "types": ["bun"]
   },
-  "include": ["src"]
+  "include": ["src", "web/src", "bun-env.d.ts"]
 }

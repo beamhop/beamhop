@@ -11,7 +11,14 @@
  * framing intact (PTY echo/canonicalization would corrupt it).
  */
 import type { ExecHandle, ExecSink, Sandbox } from "microsandbox";
-import { LineSplitter, toPiWire, fromPiWire, type WireMessage } from "@beamhop/protocol";
+import {
+  LineSplitter,
+  toPiWire,
+  fromPiWire,
+  type WireMessage,
+  type SessionSummary,
+} from "@beamhop/protocol";
+import { clearAllSessions, listSessions } from "./sessions";
 
 export interface BridgeOptions {
   /** Name of the already-running sandbox to attach to. */
@@ -38,6 +45,9 @@ export class SandboxBridge {
   /** Attach to the named running sandbox and start pi inside it. */
   async start(): Promise<void> {
     if (this.sandbox) return;
+    // Reset the closed flag up front so a restarted bridge doesn't immediately
+    // drop the events `pumpEvents()` is about to deliver.
+    this.closed = false;
 
     const { Sandbox } = await import("microsandbox");
     const handle = await Sandbox.get(this.opts.sandbox);
@@ -66,83 +76,29 @@ export class SandboxBridge {
 
   /** Write a frontend command to the pi child as a single JSONL line. */
   async send(msg: WireMessage): Promise<void> {
+    await this.writeLine(JSON.stringify(toPiWire(msg)) + "\n");
+  }
+
+  /** Write a raw line to pi's stdin, asserting the pipe is ready. */
+  private async writeLine(line: string): Promise<void> {
     if (!this.stdin) throw new Error("bridge stdin not ready");
-    const line = JSON.stringify(toPiWire(msg)) + "\n";
     await this.stdin.write(line);
   }
 
-  /**
-   * Delete every `.jsonl` session file under `~/.pi/agent/sessions/`. Pi
-   * may currently be writing to one of them; the caller should issue a
-   * `new_session` afterwards so pi opens a fresh file with a clean
-   * handle. Empty cwd directories are left in place — they're cheap.
-   * Returns the number of files removed.
-   */
-  async clearAllSessions(): Promise<number> {
+  /** The connected sandbox's filesystem, or throw if not started yet. */
+  private fs() {
     if (!this.sandbox) throw new Error("bridge not started");
-    const fs = this.sandbox.fs();
-    const root = "/.pi/agent/sessions";
-    const cwdDirs = await fs.list(root);
-    let removed = 0;
-    await Promise.all(
-      cwdDirs
-        .filter((d) => d.kind === "directory")
-        .map(async (d) => {
-          let files: Awaited<ReturnType<typeof fs.list>>;
-          try {
-            files = await fs.list(d.path);
-          } catch {
-            return;
-          }
-          for (const f of files) {
-            if (f.kind !== "file" || !f.path.endsWith(".jsonl")) continue;
-            try {
-              await fs.remove(f.path);
-              removed++;
-            } catch {
-              // Ignore — likely the active session file pi has open.
-            }
-          }
-        }),
-    );
-    return removed;
+    return this.sandbox.fs();
   }
 
-  /**
-   * Scan the sandbox's pi session directory and return one summary per
-   * session file. Skips files that contain no user message (pi creates a
-   * fresh empty session on every RPC connect; those would clutter the
-   * sidebar). Sorted newest-first by modification time.
-   */
-  async listSessions(): Promise<SessionSummary[]> {
-    if (!this.sandbox) throw new Error("bridge not started");
-    const fs = this.sandbox.fs();
-    const root = "/.pi/agent/sessions";
-    const cwdDirs = await fs.list(root);
-    const out: SessionSummary[] = [];
-    await Promise.all(
-      cwdDirs
-        .filter((d) => d.kind === "directory")
-        .map(async (d) => {
-          let files: Awaited<ReturnType<typeof fs.list>>;
-          try {
-            files = await fs.list(d.path);
-          } catch {
-            return;
-          }
-          for (const f of files) {
-            if (f.kind !== "file" || !f.path.endsWith(".jsonl")) continue;
-            try {
-              const summary = await summarizeSessionFile(fs, f.path, f.modified, f.size);
-              if (summary) out.push(summary);
-            } catch {
-              // Ignore unreadable files.
-            }
-          }
-        }),
-    );
-    out.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-    return out;
+  /** See {@link clearAllSessions} — clears every saved session in the sandbox. */
+  clearAllSessions(): Promise<number> {
+    return clearAllSessions(this.fs());
+  }
+
+  /** See {@link listSessions} — one summary per saved session, newest first. */
+  listSessions(): Promise<SessionSummary[]> {
+    return listSessions(this.fs());
   }
 
   async stop(): Promise<void> {
@@ -211,72 +167,4 @@ export class SandboxBridge {
       });
     }
   }
-}
-
-export interface SessionSummary {
-  /** Absolute path inside the sandbox — what switch_session takes. */
-  path: string;
-  /** UUID from the file's `session` metadata record. */
-  sessionId: string | null;
-  /** First user-message text, truncated. Empty if the session has none. */
-  title: string;
-  /** cwd recorded by pi when the session started. */
-  cwd: string;
-  /** File mtime (epoch ms). */
-  updatedAt: number | null;
-  /** Number of `{type:"message"}` records in the file. */
-  messageCount: number;
-  /** File size in bytes. */
-  sizeBytes: number;
-}
-
-/**
- * Read a session file just-enough to extract its display summary. Skips
- * the file if it has no user message (pi creates an empty file on every
- * RPC connect; we don't want those in the sidebar).
- */
-async function summarizeSessionFile(
-  fs: { readToString(p: string): Promise<string> },
-  path: string,
-  modified: Date | null,
-  size: number,
-): Promise<SessionSummary | null> {
-  const raw = await fs.readToString(path);
-  let sessionId: string | null = null;
-  let cwd = "";
-  let title = "";
-  let messageCount = 0;
-  for (const line of raw.split("\n")) {
-    if (!line) continue;
-    let rec: unknown;
-    try {
-      rec = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (!rec || typeof rec !== "object") continue;
-    const r = rec as { type?: string; id?: string; cwd?: string; message?: { role?: string; content?: Array<{ type?: string; text?: string }> } };
-    if (r.type === "session") {
-      if (typeof r.id === "string") sessionId = r.id;
-      if (typeof r.cwd === "string") cwd = r.cwd;
-    } else if (r.type === "message") {
-      messageCount++;
-      if (!title && r.message?.role === "user") {
-        const text = r.message.content?.find((c) => c.type === "text")?.text;
-        if (typeof text === "string" && text.length > 0) {
-          title = text.length > 80 ? text.slice(0, 77) + "…" : text;
-        }
-      }
-    }
-  }
-  if (!title) return null;
-  return {
-    path,
-    sessionId,
-    title,
-    cwd,
-    updatedAt: modified ? modified.getTime() : null,
-    messageCount,
-    sizeBytes: size,
-  };
 }

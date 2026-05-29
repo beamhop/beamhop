@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ChatTranscript } from "./components/Chat";
 import { CommandPalette, type PaletteItem } from "./components/CommandPalette";
 import { Composer } from "./components/Composer";
@@ -13,142 +6,32 @@ import { ExtDialog } from "./components/Dialog";
 import { Sidebar } from "./components/Sidebar";
 import { Inspector } from "./components/Inspector";
 import { SandboxPrompt } from "./components/SandboxPrompt";
+import { TitleBar } from "./components/TitleBar";
+import { ToastStack } from "./components/ToastStack";
+import { buildPaletteItems } from "./components/palette/buildPaletteItems";
 import { type PiCommand } from "./data/commands";
+import { type PiModel, type ThinkingLevel } from "./data/models";
+import { type RpcStatus } from "./rpc/client";
+import { useRpcClient } from "./hooks/useRpcClient";
+import { useToast } from "./hooks/useToast";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
-  PROVIDER_DOT,
-  THINKING_LEVELS,
-  type PiModel,
-  type ThinkingLevel,
-} from "./data/models";
-import { RpcClient, type RpcStatus } from "./rpc/client";
-import { initialState, reduce, type State } from "./rpc/reducer";
+  SANDBOX_KEY,
+  forgetSessionFile,
+  loadInitialSandbox,
+  rememberSandbox,
+  rememberSessionFile,
+  storedSessionFile,
+} from "./hooks/useSessionPersistence";
+import { initialState, reduce } from "./rpc/reducer";
 import {
   ACCENTS,
   TWEAK_DEFAULTS,
   type DialogAnswer,
   type QueueState,
-  type SessionSummary,
   type Toggles,
   type Tweaks,
 } from "./types";
-import { uid } from "./util";
-
-const SANDBOX_KEY = "pi-rpc:sandbox";
-const LEGACY_SNAPSHOT_KEY = "pi-rpc:snapshot";
-/**
- * Per-sandbox key holding the absolute path of the pi session file the
- * user was last in. On reconnect we ask pi to `switch_session` to this
- * path so the transcript survives a page refresh.
- */
-const sessionFileKey = (sandbox: string) => `pi-rpc:sessionFile:${sandbox}`;
-
-function loadInitialSandbox(): string {
-  const v = localStorage.getItem(SANDBOX_KEY);
-  if (v) return v;
-  // The earlier build stored a snapshot name under a different key. The
-  // semantics changed (we now attach instead of spawn), so don't silently
-  // adopt it as a sandbox name — clear it so the prompt re-runs.
-  if (localStorage.getItem(LEGACY_SNAPSHOT_KEY)) {
-    localStorage.removeItem(LEGACY_SNAPSHOT_KEY);
-  }
-  return "";
-}
-
-function TitleBar({
-  session,
-  model,
-  models,
-  stats,
-  status,
-  sandbox,
-  onPalette,
-  onSwitchSandbox,
-}: {
-  session: SessionSummary | null;
-  model: string;
-  models: PiModel[];
-  stats: State["stats"];
-  status: RpcStatus;
-  sandbox: string;
-  onPalette: () => void;
-  onSwitchSandbox: () => void;
-}) {
-  const pct = Math.round((stats.contextTokens / Math.max(1, stats.contextWindow)) * 100);
-  const piModel =
-    models.find((m) => m.name === model || m.id === model) ?? models[0];
-  return (
-    <div className="titlebar" data-testid="titlebar">
-      <div className="lights">
-        <span className="light red" />
-        <span className="light yellow" />
-        <span className="light green" />
-      </div>
-      <div className="titlecenter">
-        <span className="titlecwd mono">{session?.cwd ?? ""}</span>
-        <span className="titlesep">›</span>
-        <span className="titlename">{session?.title ?? "untitled session"}</span>
-      </div>
-      <div className="titleright">
-        <button
-          className="titlepill mono"
-          onClick={onSwitchSandbox}
-          title="Switch sandbox"
-          data-testid="titlebar-switch-sandbox"
-          style={{ cursor: "pointer" }}
-        >
-          ⤺ {sandbox}
-        </button>
-        <button
-          className="titlek mono"
-          onClick={onPalette}
-          title="Command palette (⌘K)"
-          data-testid="titlebar-palette-btn"
-        >
-          <span className="searchglyph">⌕</span> commands{" "}
-          <span className="kbd mono">⌘K</span>
-        </button>
-        <span className="titlepill mono">
-          <span
-            className="provdot"
-            style={{
-              background: PROVIDER_DOT[piModel?.provider ?? "openrouter"],
-            }}
-          />
-          {model || "—"}
-        </span>
-        <span className="titlepill mono">{pct}% ctx</span>
-        <span className="titlepill mono">${stats.cost.toFixed(2)}</span>
-        <span
-          className="titlepill mono"
-          style={{ color: status === "open" ? "var(--green)" : status === "error" ? "var(--red)" : "var(--tx-faint)" }}
-          data-testid="titlebar-status"
-        >
-          {status}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-interface Toast {
-  id: string;
-  text: string;
-  glyph?: string;
-  tone?: "warn" | "ok";
-}
-
-function ToastStack({ toasts }: { toasts: Toast[] }) {
-  return (
-    <div className="toaststack" data-testid="toaststack">
-      {toasts.map((t) => (
-        <div className={"toast " + (t.tone || "")} key={t.id}>
-          <span className="toastglyph">{t.glyph || "✓"}</span>
-          <span>{t.text}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function App() {
   // --- persistent settings ---
@@ -170,8 +53,6 @@ export default function App() {
     root.dataset.mono = tweaks.monoEverywhere ? "1" : "0";
   }, [tweaks]);
 
-  // sessions come live from `list_sessions` (state.sessions). No seed state.
-
   // --- rpc state from reducer ---
   const [state, dispatch] = useReducer(reduce, undefined, initialState);
 
@@ -185,10 +66,11 @@ export default function App() {
   const [queue, setQueue] = useState<QueueState>({ steering: [], followUp: [] });
   const [toggles, setToggles] = useState<Toggles>({ autoCompact: true, autoRetry: true });
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [toasts, setToasts] = useState<Toast[]>([]);
   // When true, the sandbox picker overlays the running app so the user
   // can switch to a different sandbox. Esc/Cancel dismisses it.
   const [wantSwitch, setWantSwitch] = useState(false);
+
+  const { toasts, toast } = useToast();
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
@@ -202,47 +84,13 @@ export default function App() {
     nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   }, []);
 
-  const toast = useCallback((text: string, glyph?: string, tone?: Toast["tone"]) => {
-    const id = uid("t");
-    setToasts((p) => [...p, { id, text, glyph, tone }]);
-    setTimeout(() => setToasts((p) => p.filter((x) => x.id !== id)), 2600);
-  }, []);
-
-  // In the Tauri webview the page is served from tauri://localhost (no
-  // Vite proxy), so a relative /rpc URL goes nowhere. Detect that and
-  // connect directly to the sidecar host on its known port.
-  const wsUrl = useMemo(() => {
-    const isViteDev =
-      window.location.protocol === "http:" || window.location.protocol === "https:";
-    return isViteDev
-      ? (window.location.protocol === "https:" ? "wss://" : "ws://") +
-          window.location.host +
-          "/rpc"
-      : "ws://127.0.0.1:5179/rpc";
-  }, []);
-
   // --- RPC client lifecycle ---
-  const clientRef = useRef<RpcClient | null>(null);
-  useEffect(() => {
-    if (!sandbox) return;
-    const client = new RpcClient({
-      url: wsUrl,
-      sandbox,
-      onMessage: (msg) => dispatch({ kind: "rpc", msg }),
-      onStatus: (status, detail) => dispatch({ kind: "status", status, detail }),
-    });
-    clientRef.current = client;
-    client.connect();
-    return () => {
-      client.close();
-      clientRef.current = null;
-    };
-  }, [sandbox]);
-
-  // --- commands sent to host ---
-  const send = useCallback((msg: Record<string, unknown>) => {
-    clientRef.current?.send(msg);
-  }, []);
+  const onMessage = useCallback((msg: Record<string, unknown>) => dispatch({ kind: "rpc", msg }), []);
+  const onStatus = useCallback(
+    (status: RpcStatus, detail?: string) => dispatch({ kind: "status", status, detail }),
+    [],
+  );
+  const { wsUrl, send, request, getClient } = useRpcClient({ sandbox, onMessage, onStatus });
 
   // Live catalogs come from pi via `response` envelopes. Until they arrive
   // the pickers render an empty/loading state — no hardcoded fallback list.
@@ -256,31 +104,31 @@ export default function App() {
   // the fresh-on-connect session, not the resumed one.
   useEffect(() => {
     if (state.status !== "open") return;
-    const client = clientRef.current;
+    const client = getClient();
     if (!client) return;
     (async () => {
       client.send({ type: "get_available_models" });
       client.send({ type: "get_commands" });
-      const stored = localStorage.getItem(sessionFileKey(sandbox));
+      const stored = storedSessionFile(sandbox);
       if (stored) {
         const resp = await client.request({ type: "switch_session", sessionPath: stored });
         if (resp.success) {
           client.send({ type: "get_messages" });
         } else {
           // Stored path is gone — discard so we don't try again next reload.
-          localStorage.removeItem(sessionFileKey(sandbox));
+          forgetSessionFile(sandbox);
         }
       }
       client.send({ type: "get_session_stats" });
       client.send({ type: "list_sessions" });
     })();
-  }, [state.status, sandbox]);
+  }, [state.status, sandbox, getClient]);
 
   // Persist pi's current session file path so we can auto-resume it on
   // the next page load.
   useEffect(() => {
     if (state.currentSessionFile) {
-      localStorage.setItem(sessionFileKey(sandbox), state.currentSessionFile);
+      rememberSessionFile(sandbox, state.currentSessionFile);
     }
   }, [state.currentSessionFile, sandbox]);
 
@@ -338,15 +186,6 @@ export default function App() {
     toast("Aborted", "✕", "warn");
   }, [send, toast]);
 
-  // esc to abort
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && state.streaming && !state.dialog) onAbort();
-    };
-    document.addEventListener("keydown", k);
-    return () => document.removeEventListener("keydown", k);
-  }, [state.streaming, state.dialog, onAbort]);
-
   const onPickModel = useCallback(
     (m: PiModel) => {
       setModel(m.name);
@@ -372,23 +211,23 @@ export default function App() {
   }, [send, toast]);
 
   const onNew = useCallback(async () => {
-    const client = clientRef.current;
+    const client = getClient();
     if (!client) return;
     // Forget the persisted session before starting a new one so a refresh
     // mid-fresh-session doesn't re-resume the previous one.
-    localStorage.removeItem(sessionFileKey(sandbox));
+    forgetSessionFile(sandbox);
     dispatch({ kind: "reset" });
     setQueue({ steering: [], followUp: [] });
     await client.request({ type: "new_session" });
     client.send({ type: "get_session_stats" });
     client.send({ type: "list_sessions" });
     toast("New session started", "+");
-  }, [sandbox, toast]);
+  }, [sandbox, toast, getClient]);
 
   // Switch to a previously-saved session from the sidebar.
   const onSwitchSession = useCallback(
     async (path: string) => {
-      const client = clientRef.current;
+      const client = getClient();
       if (!client) return;
       dispatch({ kind: "reset" });
       setQueue({ steering: [], followUp: [] });
@@ -401,14 +240,14 @@ export default function App() {
         toast("Couldn't switch session", "✕", "warn");
       }
     },
-    [toast],
+    [toast, getClient],
   );
 
   // Delete every saved session JSONL inside the sandbox, then have pi
   // open a fresh empty session. Persisted sessionFile is dropped so the
   // next refresh doesn't try to switch_session to a path we just nuked.
   const onClearAll = useCallback(async () => {
-    const client = clientRef.current;
+    const client = getClient();
     if (!client) return;
     const resp = await client.request({ type: "clear_all_sessions" });
     if (!resp.success) {
@@ -416,14 +255,14 @@ export default function App() {
       return;
     }
     const removed = (resp.data as { removed?: number } | undefined)?.removed ?? 0;
-    localStorage.removeItem(sessionFileKey(sandbox));
+    forgetSessionFile(sandbox);
     dispatch({ kind: "reset" });
     setQueue({ steering: [], followUp: [] });
     await client.request({ type: "new_session" });
     client.send({ type: "list_sessions" });
     client.send({ type: "get_session_stats" });
     toast(`Cleared ${removed} session${removed === 1 ? "" : "s"}`, "✕", "warn");
-  }, [sandbox, toast]);
+  }, [sandbox, toast, getClient]);
 
   const onToggle = useCallback(
     (k: keyof Toggles, v: boolean) => {
@@ -461,143 +300,70 @@ export default function App() {
     [onCompact, send],
   );
 
-  // ⌘K palette
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
-        e.preventDefault();
-        setPaletteOpen((o) => !o);
-      }
-    };
-    document.addEventListener("keydown", k);
-    return () => document.removeEventListener("keydown", k);
-  }, []);
-
-  const paletteItems = useMemo<PaletteItem[]>(() => {
-    const items: PaletteItem[] = [];
-    const add = (
-      group: string,
-      label: string,
-      run: () => void,
-      opts: Partial<PaletteItem> = {},
-    ) => items.push({ id: group + ":" + label, group, label, run, ...opts });
-    add("Session", "New session", onNew, { kbd: "⌘N", glyph: "+" });
-    add("Session", "Fork from a previous message", onFork, { glyph: "⑂" });
-    add("Session", "Clone current branch", onClone, { glyph: "⧉" });
-    add("Session", "Export session to HTML", onExport, { glyph: "↗" });
-    (state.sessions ?? [])
-      .filter((s) => s.path !== state.currentSessionFile)
-      .slice(0, 20)
-      .forEach((s) =>
-        add(
-          "Switch session",
-          s.title || "(untitled)",
-          () => onSwitchSession(s.path),
-          { hint: s.cwd, glyph: "›" },
-        ),
-      );
-    if (state.streaming) add("Run control", "Abort current run", onAbort, { kbd: "esc", glyph: "✕" });
-    add(
-      "Run control",
-      "Queue next message as steering",
-      () => {
-        setQueueMode("steer");
-        toast("Queue mode → steer", "↻");
-      },
-      { glyph: "↻" },
-    );
-    add(
-      "Run control",
-      "Queue next message as follow-up",
-      () => {
-        setQueueMode("followUp");
-        toast("Queue mode → follow-up", "→");
-      },
-      { glyph: "→" },
-    );
-    models.forEach((m) =>
-      add("Model", "Use " + m.name, () => onPickModel(m), {
-        hint: m.provider + " · " + ((m.contextWindow / 1000) | 0) + "k",
-        glyph: "◆",
-      }),
-    );
-    THINKING_LEVELS.forEach((lv) =>
-      add(
-        "Thinking level",
-        "Thinking: " + lv,
-        () => onSetThinking(lv),
-        { glyph: "✦" },
-      ),
-    );
-    add("Context", "Compact context now", onCompact, { glyph: "⤵" });
-    add(
-      "Context",
-      (toggles.autoCompact ? "Disable" : "Enable") + " auto-compaction",
-      () => onToggle("autoCompact", !toggles.autoCompact),
-      { glyph: "◑" },
-    );
-    add(
-      "Context",
-      (toggles.autoRetry ? "Disable" : "Enable") + " auto-retry",
-      () => onToggle("autoRetry", !toggles.autoRetry),
-      { glyph: "↺" },
-    );
-    (["blue", "green", "amber", "violet"] as const).forEach((a) =>
-      add(
-        "Appearance",
-        "Accent: " + a,
-        () => {
-          setTweak("accent", a);
-          toast("Accent → " + a);
+  // Global keyboard shortcuts: ⌘K toggles the palette, Esc aborts a run.
+  useKeyboardShortcuts(
+    useMemo(
+      () => [
+        { key: "k", meta: true, run: () => setPaletteOpen((o) => !o) },
+        {
+          key: "escape",
+          when: () => state.streaming && !state.dialog,
+          preventDefault: false,
+          run: onAbort,
         },
-        { glyph: "●" },
-      ),
-    );
-    (["compact", "regular", "comfy"] as const).forEach((d) =>
-      add("Appearance", "Density: " + d, () => setTweak("density", d), { glyph: "▤" }),
-    );
-    add(
-      "Appearance",
-      (tweaks.showEvents ? "Hide" : "Show") + " RPC inspector",
-      () => setTweak("showEvents", !tweaks.showEvents),
-      { glyph: "▦" },
-    );
-    add(
-      "Appearance",
-      tweaks.monoEverywhere ? "Disable mono-everywhere" : "Enable mono-everywhere",
-      () => setTweak("monoEverywhere", !tweaks.monoEverywhere),
-      { glyph: "M" },
-    );
-    commands.forEach((c) =>
-      add("Slash command", "/" + c.name, () => runSlash(c), {
-        hint: c.desc,
-        source: c.source,
+      ],
+      [state.streaming, state.dialog, onAbort],
+    ),
+  );
+
+  const paletteItems = useMemo<PaletteItem[]>(
+    () =>
+      buildPaletteItems({
+        sessions: state.sessions,
+        currentSessionFile: state.currentSessionFile,
+        streaming: state.streaming,
+        toggles,
+        tweaks,
+        models,
+        commands,
+        onNew,
+        onFork,
+        onClone,
+        onExport,
+        onSwitchSession,
+        onAbort,
+        setQueueMode,
+        onPickModel,
+        onSetThinking,
+        onCompact,
+        onToggle,
+        setTweak,
+        runSlash,
+        toast,
       }),
-    );
-    return items;
-  }, [
-    state.sessions,
-    state.currentSessionFile,
-    state.streaming,
-    toggles,
-    tweaks,
-    models,
-    commands,
-    onNew,
-    onFork,
-    onClone,
-    onExport,
-    onSwitchSession,
-    onAbort,
-    onPickModel,
-    onSetThinking,
-    onCompact,
-    onToggle,
-    runSlash,
-    setTweak,
-    send,
-    toast,
-  ]);
+    [
+      state.sessions,
+      state.currentSessionFile,
+      state.streaming,
+      toggles,
+      tweaks,
+      models,
+      commands,
+      onNew,
+      onFork,
+      onClone,
+      onExport,
+      onSwitchSession,
+      onAbort,
+      onPickModel,
+      onSetThinking,
+      onCompact,
+      onToggle,
+      runSlash,
+      setTweak,
+      toast,
+    ],
+  );
 
   const onDialogResolve = useCallback(
     (ans: DialogAnswer) => {
@@ -635,7 +401,7 @@ export default function App() {
         <SandboxPrompt
           wsUrl={wsUrl}
           onSubmit={(name) => {
-            localStorage.setItem(SANDBOX_KEY, name);
+            rememberSandbox(name);
             setSandbox(name);
           }}
         />
@@ -656,8 +422,8 @@ export default function App() {
               return;
             }
             setWantSwitch(false);
-            localStorage.setItem(SANDBOX_KEY, name);
-            if (sandbox) localStorage.removeItem(sessionFileKey(sandbox));
+            rememberSandbox(name);
+            if (sandbox) forgetSessionFile(sandbox);
             setSandbox(name);
           }}
         />

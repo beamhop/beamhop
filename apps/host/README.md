@@ -1,18 +1,24 @@
 # @beamhop/host
 
-Bun HTTP + WebSocket server. Serves the built web UI and bridges each
-browser session to a `pi --mode rpc` process running inside a
-[microsandbox](https://microsandbox.dev).
+Bun **fullstack** server. Bundles and serves the React web UI (in `web/`)
+*and* bridges each browser session to a `pi --mode rpc` process running
+inside a [microsandbox](https://microsandbox.dev) — all in one process.
+
+The UI source lives in [`web/`](./web): Bun transpiles & bundles
+`web/index.html` + `web/src/main.tsx` automatically (HMR in dev, embedded
+in the build for prod). There is no Vite and no separate web dev server.
 
 ## Architecture
 
 ```
-browser  ──ws──▶  @beamhop/host  ──exec──▶  pi (in microsandbox)
-                  │
-                  ├── one SandboxBridge per WS
-                  ├── strict JSONL framing (see @beamhop/protocol)
-                  └── attaches to an already-running sandbox by name
-                      (never starts or stops it itself)
+browser  ──http──▶  @beamhop/host  (serves bundled React UI on "/*")
+         ──ws────▶                 ──exec──▶  pi (in microsandbox)
+                    │
+                    ├── routes: "/rpc" → WS upgrade, "/*" → web/index.html bundle
+                    ├── one SandboxBridge per WS
+                    ├── strict JSONL framing (see @beamhop/protocol)
+                    └── attaches to an already-running sandbox by name
+                        (never starts or stops it itself)
 ```
 
 ## Client protocol
@@ -33,7 +39,7 @@ pi events pass through unchanged.
 From repo root:
 
 ```sh
-bun run dev:host   # hot reload on apps/host/src/server.ts
+bun run dev   # hot reload + Bun HMR for the UI
 ```
 
 Or directly:
@@ -43,17 +49,27 @@ cd apps/host
 bun run dev
 ```
 
-Defaults to `PORT=5179`. The web UI (`apps/web`) proxies `/rpc` to this
-port in dev.
+Defaults to `PORT=5179`, which serves both the UI and `/rpc`. Set
+`NODE_ENV=production` (or use `bun run start`) to disable HMR and serve a
+minified, in-memory-cached bundle.
 
-## Build a standalone binary
+## Build
 
 ```sh
-bun run build:host
-# → apps/tauri/binaries/pi-rpc-host
+bun run build       # → apps/host/dist/ (server.js + bundled UI assets)
 ```
 
-This is what the Tauri shell will eventually ship.
+`build.ts` runs `Bun.build` with flat `naming` so `server.js` lands next to
+its bundled `index.html` / `index-*.js` / `index-*.css`. **At runtime the
+server resolves those assets relative to its working directory**, so run the
+built server with `dist/` as the cwd:
+
+```sh
+cd apps/host/dist && NODE_ENV=production bun server.js
+```
+
+`scripts/prepare-tauri.sh` stages this whole `dist/` into the Tauri bundle and
+the Rust launcher spawns `bun server.js` with that dir as the cwd.
 
 ## Tests
 
@@ -66,6 +82,8 @@ relies on them for wire correctness.)
 
 ## Files
 
-- `src/server.ts` — Bun.serve, WS upgrade, per-socket bridge
+- `src/server.ts` — Bun.serve with `routes` (`/rpc` WS upgrade + `/*` UI bundle)
 - `src/bridge.ts` — `SandboxBridge`: attaches to a sandbox, execs pi,
   pumps stdin/stdout, fans events back to the WS
+- `build.ts` — production bundle (flat output so server.js sits with its assets)
+- `web/` — the React UI source (index.html + src/), bundled by the host

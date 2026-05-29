@@ -2,9 +2,12 @@
 # Stages everything `tauri build` needs into apps/tauri/:
 #   binaries/bun-<target>                          # bun sidecar
 #   resources/host/server.js                        # bundled host
+#   resources/host/index.html + index-*.js/.css     # bundled UI (served by host)
 #   resources/host/node_modules/microsandbox/       # SDK
 #   resources/host/node_modules/@superradcompany/microsandbox-darwin-arm64/
-#   resources/web/dist/                             # built UI mirror
+#
+# The web UI is bundled alongside server.js by the host build; the host
+# serves it itself, so there is no separate web dist to ship.
 #
 # Why this layout: bun build --compile does not embed `.node` native
 # bindings, which microsandbox needs. Instead we ship the Bun runtime
@@ -15,7 +18,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TAURI="$ROOT/apps/tauri"
 HOST_RES="$TAURI/resources/host"
-WEB_RES="$TAURI/resources/web"
 BIN_DIR="$TAURI/binaries"
 
 BUN_BIN="${BUN_BIN:-$(command -v bun)}"
@@ -26,10 +28,7 @@ fi
 
 TARGET="${TAURI_TARGET:-aarch64-apple-darwin}"
 
-echo "==> building web UI"
-bun --filter @beamhop/web build
-
-echo "==> building host bundle"
+echo "==> building host bundle (web UI is embedded by the host build)"
 bun --filter @beamhop/host build
 
 echo "==> staging bun sidecar at $BIN_DIR/bun-$TARGET"
@@ -41,7 +40,11 @@ chmod +x "$BIN_DIR/bun-$TARGET"
 echo "==> staging host resources at $HOST_RES"
 rm -rf "$HOST_RES"
 mkdir -p "$HOST_RES/node_modules/@superradcompany"
-cp "$ROOT/apps/host/dist/server.js" "$HOST_RES/server.js"
+# Copy the whole dist/: server.js plus the bundled UI files (index.html,
+# index-*.js, index-*.css). server.js resolves those siblings relative to
+# its working directory at runtime, so they must sit next to it and Rust
+# must spawn `bun server.js` with cwd = this dir (it does — current_dir).
+cp -R "$ROOT/apps/host/dist/." "$HOST_RES/"
 
 # -L follows the workspace symlinks so the SDK becomes a real
 # directory inside the bundle.
@@ -57,10 +60,8 @@ fi
 cp -RL "$NATIVE_SRC" \
        "$HOST_RES/node_modules/@superradcompany/microsandbox-darwin-arm64"
 
-echo "==> staging web dist at $WEB_RES/dist"
-rm -rf "$WEB_RES"
-mkdir -p "$WEB_RES"
-cp -R "$ROOT/apps/web/dist" "$WEB_RES/dist"
+# The UI ships as the bundled files inside resources/host/ (copied above) —
+# no separate web dist to stage.
 
 echo "==> done"
-du -sh "$HOST_RES" "$WEB_RES" "$BIN_DIR/bun-$TARGET" 2>/dev/null || true
+du -sh "$HOST_RES" "$BIN_DIR/bun-$TARGET" 2>/dev/null || true

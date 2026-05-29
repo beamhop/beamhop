@@ -4,11 +4,8 @@
   "version": "0.0.0",
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "dev:host": "bun --filter @beamhop/host dev",
-    "dev:web": "bun --filter @beamhop/web dev",
     "dev": "bun run --hot apps/host/src/server.ts",
     "build:host": "bun --filter @beamhop/host build",
-    "build:web": "bun --filter @beamhop/web build",
     "prepare:tauri": "bash scripts/prepare-tauri.sh",
     "build:tauri": "bun run prepare:tauri && bunx tauri build --config apps/tauri/tauri.conf.json --target aarch64-apple-darwin",
     "test": "bun test"

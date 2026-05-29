@@ -17,6 +17,42 @@ const ALIAS: Record<string, string> = {
 
 export type WireMessage = { type: string; [k: string]: unknown };
 
+/**
+ * One pi session as reported by the host's `list_sessions` (which walks
+ * `~/.pi/agent/sessions/` inside the sandbox). Shared between host and web
+ * so both ends agree on the wire shape. The `path` is the canonical id
+ * pi's `switch_session` command accepts.
+ */
+export interface SessionSummary {
+  /** Absolute path inside the sandbox — what switch_session takes. */
+  path: string;
+  /** UUID from the file's `session` metadata record. */
+  sessionId: string | null;
+  /** First user-message text, truncated. Empty if the session has none. */
+  title: string;
+  /** cwd recorded by pi when the session started. */
+  cwd: string;
+  /** File mtime (epoch ms). */
+  updatedAt: number | null;
+  /** Number of `{type:"message"}` records in the file. */
+  messageCount: number;
+  /** File size in bytes. */
+  sizeBytes: number;
+}
+
+/**
+ * Host-synthesized reply to a command (one of the commands the host answers
+ * itself instead of forwarding to pi, e.g. `list_sessions`). `success`
+ * discriminates between `data` and `error`.
+ */
+export interface ResponseEnvelope {
+  type: "response";
+  command: string;
+  success: boolean;
+  data?: Record<string, unknown>;
+  error?: string;
+}
+
 /** Frontend → pi: rewrite known short names to canonical wire names. */
 export function toPiWire(msg: WireMessage): WireMessage {
   const aliased = ALIAS[msg.type];
