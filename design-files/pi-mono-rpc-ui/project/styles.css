@@ -1,0 +1,112 @@
+/* ============================================================
+   pi · RPC control surface — design tokens & base styles
+   Dark developer-tool aesthetic. Geist + Geist Mono.
+   ============================================================ */
+
+:root {
+  /* --- surfaces (warm-cool neutral, blue-black) --- */
+  --bg-app: oklch(0.155 0.008 264);      /* window backdrop behind chrome */
+  --bg-base: oklch(0.185 0.009 264);     /* main canvas */
+  --bg-panel: oklch(0.205 0.010 264);    /* rails / inspector */
+  --bg-elev: oklch(0.232 0.011 264);     /* cards, raised */
+  --bg-elev-2: oklch(0.265 0.012 264);   /* hover / popovers */
+  --bg-input: oklch(0.165 0.009 264);
+
+  /* --- hairlines --- */
+  --line: oklch(0.30 0.012 264);
+  --line-soft: oklch(0.255 0.010 264);
+  --line-strong: oklch(0.40 0.015 264);
+
+  /* --- text --- */
+  --tx-hi: oklch(0.96 0.006 264);
+  --tx: oklch(0.84 0.008 264);
+  --tx-dim: oklch(0.66 0.010 264);
+  --tx-faint: oklch(0.52 0.011 264);
+
+  /* --- accents (shared chroma/lightness, varied hue) --- */
+  --blue: oklch(0.70 0.135 258);
+  --blue-dim: oklch(0.58 0.10 258);
+  --blue-bg: oklch(0.70 0.135 258 / 0.13);
+  --green: oklch(0.74 0.135 158);
+  --green-bg: oklch(0.74 0.135 158 / 0.13);
+  --amber: oklch(0.78 0.135 78);
+  --amber-bg: oklch(0.78 0.135 78 / 0.13);
+  --red: oklch(0.68 0.155 22);
+  --red-bg: oklch(0.68 0.155 22 / 0.14);
+  --violet: oklch(0.72 0.135 300);
+  --violet-bg: oklch(0.72 0.135 300 / 0.13);
+
+  --accent: var(--blue);
+  --accent-bg: var(--blue-bg);
+
+  /* --- type --- */
+  --sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --r-sm: 5px;
+  --r: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+
+  --sh-pop: 0 12px 40px -8px oklch(0.10 0.01 264 / 0.7), 0 2px 8px oklch(0 0 0 / 0.4);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: var(--bg-app);
+  color: var(--tx);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv01", "cv02", "ss01";
+}
+#root { height: 100%; }
+
+::selection { background: oklch(0.70 0.135 258 / 0.35); }
+
+/* scrollbars */
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: oklch(0.40 0.012 264 / 0.6);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: oklch(0.50 0.014 264 / 0.7); background-clip: padding-box; border: 3px solid transparent; }
+
+button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+input, textarea { font-family: inherit; }
+
+.mono { font-family: var(--mono); font-feature-settings: "zero", "ss01"; }
+
+/* ---- utility: focus ring ---- */
+.focusring:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+/* ---- thin uppercase label ---- */
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tx-faint);
+  font-weight: 500;
+}
+
+/* ---- generic pill ---- */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11.5px; font-weight: 500;
+  border: 1px solid var(--line);
+  color: var(--tx-dim);
+  white-space: nowrap;
+}
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse-ring { 0%{box-shadow:0 0 0 0 var(--accent-bg)} 70%{box-shadow:0 0 0 6px transparent} 100%{box-shadow:0 0 0 0 transparent} }
+@keyframes fadeup { from { transform: translateY(5px); } to { transform: none; } }
+@keyframes streamdot { 0%,100%{opacity:.3; transform:translateY(0)} 50%{opacity:1; transform:translateY(-2px)} }

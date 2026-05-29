@@ -1,0 +1,18 @@
+{
+  "name": "@beamhop/host",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/server.ts",
+    "build": "bun build src/server.ts --outfile dist/server.js --target=bun --external microsandbox --external @superradcompany/microsandbox-darwin-arm64",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@beamhop/protocol": "workspace:*",
+    "microsandbox": "^0.5.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14"
+  }
+}

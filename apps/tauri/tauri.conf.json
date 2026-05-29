@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "beamhop",
+  "version": "0.0.0",
+  "identifier": "com.beamhop.app",
+  "build": {
+    "beforeDevCommand": "bun --filter @beamhop/web dev",
+    "beforeBuildCommand": "bun run prepare:tauri",
+    "devUrl": "http://localhost:5180",
+    "frontendDist": "../web/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "pi · RPC Control",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns"
+    ],
+    "externalBin": ["binaries/bun"],
+    "resources": ["resources/**/*"],
+    "macOS": {
+      "signingIdentity": "Developer ID Application: HILMI SAHIN (FB4AR6HYUC)",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.plist",
+      "minimumSystemVersion": "11.0"
+    }
+  }
+}
