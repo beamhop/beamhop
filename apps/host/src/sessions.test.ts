@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { summarizeSessionFile } from "./sessions";
+import type { SandboxFs } from "microsandbox";
+import { clearAllSessions, listSessions, summarizeSessionFile } from "./sessions";
 
 /** Minimal fake fs that returns a fixed file body for readToString. */
 function fakeFs(body: string) {
@@ -59,5 +60,24 @@ describe("summarizeSessionFile", () => {
     const summary = await summarizeSessionFile(fakeFs(body), "/p/s.jsonl", null, 0);
     expect(summary?.title).toBe("ok");
     expect(summary?.updatedAt).toBeNull();
+  });
+});
+
+/** fs whose `list` always rejects, mimicking a not-yet-created sessions root. */
+function fsListRejects(): SandboxFs {
+  return {
+    list: async () => {
+      throw new Error("No such file or directory");
+    },
+  } as unknown as SandboxFs;
+}
+
+describe("session-root resilience", () => {
+  test("listSessions resolves to [] when the root does not exist", async () => {
+    expect(await listSessions(fsListRejects())).toEqual([]);
+  });
+
+  test("clearAllSessions resolves to 0 when the root does not exist", async () => {
+    expect(await clearAllSessions(fsListRejects())).toBe(0);
   });
 });

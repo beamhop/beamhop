@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>beamhop · architecture playground</title>
+
+<!--
+  ╔══════════════════════════════════════════════════════════════════════╗
+  ║  BEAMHOP — LIVING ARCHITECTURE DOC                                     ║
+  ║                                                                        ║
+  ║  This is a SINGLE self-contained file. Double-click to open. No build. ║
+  ║                                                                        ║
+  ║  HOW TO EDIT (read this!):                                             ║
+  ║  All the *content* lives in three data arrays near the bottom of the   ║
+  ║  <script> block: COMPONENTS, JOURNEYS, GLOSSARY.                       ║
+  ║  Change the DATA, not the markup — the renderers redraw everything.    ║
+  ║  Want a new box on the map? add a COMPONENTS entry.                    ║
+  ║  Want a new "follow the data" story? add a JOURNEYS entry.             ║
+  ╚══════════════════════════════════════════════════════════════════════╝
+-->
+
+<!-- Optional synthwave display font. Falls back to system fonts when offline. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<style>
+  /* ───────────────────────── THEME TOKENS ───────────────────────── */
+  :root {
+    --bg-0: #0b0420;
+    --bg-1: #150a36;
+    --bg-2: #1d0b3d;
+    --ink: #e9e4ff;
+    --ink-dim: #a99fd6;
+    --cyan: #2de2e6;
+    --magenta: #ff2e97;
+    --purple: #c14fff;
+    --lime: #b4ff39;
+    --amber: #ff9f1c;
+    --blue: #5b8cff;
+    --pink: #ff5edb;
+    --grid: rgba(120, 80, 220, 0.18);
+    --panel: rgba(24, 12, 56, 0.72);
+    --panel-edge: rgba(193, 79, 255, 0.35);
+    --display: "Orbitron", "Segoe UI", system-ui, sans-serif;
+    --body: "Rajdhani", "Segoe UI", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; scroll-padding-top: 84px; }
+
+  body {
+    margin: 0;
+    font-family: var(--body);
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(255, 46, 151, 0.18), transparent 60%),
+      radial-gradient(900px 500px at 90% 10%, rgba(45, 226, 230, 0.14), transparent 60%),
+      linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 45%, #060214 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Retro perspective grid floor */
+  body::after {
+    content: "";
+    position: fixed;
+    left: -50%;
+    right: -50%;
+    bottom: -10%;
+    height: 55vh;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 46px 46px;
+    transform: perspective(340px) rotateX(68deg);
+    transform-origin: bottom center;
+    pointer-events: none;
+    z-index: 0;
+    mask-image: linear-gradient(180deg, transparent, #000 70%);
+    animation: floor 14s linear infinite;
+  }
+  @keyframes floor { to { background-position: 0 46px, 0 0; } }
+
+  a { color: var(--cyan); text-decoration: none; }
+
+  /* ───────────────────────── NAV ───────────────────────── */
+  header.nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 12px 22px;
+    backdrop-filter: blur(10px);
+    background: linear-gradient(180deg, rgba(11, 4, 32, 0.92), rgba(11, 4, 32, 0.55));
+    border-bottom: 1px solid var(--panel-edge);
+  }
+  .nav .brand {
+    font-family: var(--display);
+    font-weight: 900;
+    letter-spacing: 2px;
+    font-size: 16px;
+    color: #fff;
+    text-shadow: 0 0 10px var(--magenta), 0 0 22px var(--magenta);
+  }
+  .nav .brand span { color: var(--cyan); text-shadow: 0 0 10px var(--cyan), 0 0 22px var(--cyan); }
+  .nav nav { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+  .nav nav a {
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-size: 12px;
+    color: var(--ink-dim);
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    transition: all .2s;
+  }
+  .nav nav a:hover { color: #fff; border-color: var(--cyan); box-shadow: 0 0 14px rgba(45,226,230,.5); }
+
+  main { position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; padding: 0 20px 120px; }
+
+  /* ───────────────────────── HERO ───────────────────────── */
+  .hero { text-align: center; padding: 72px 12px 40px; }
+  .hero h1 {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: clamp(42px, 9vw, 104px);
+    margin: 0;
+    line-height: .95;
+    letter-spacing: 4px;
+    background: linear-gradient(180deg, #fff 10%, var(--pink) 55%, var(--purple) 100%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 24px rgba(255, 46, 151, .55));
+    animation: flicker 6s infinite;
+  }
+  @keyframes flicker { 0%,92%,100%{opacity:1} 93%{opacity:.72} 94%{opacity:1} 96%{opacity:.85} }
+  .hero .sub {
+    font-size: clamp(15px, 2.4vw, 21px);
+    color: var(--cyan);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 14px;
+    text-shadow: 0 0 14px rgba(45,226,230,.5);
+  }
+  .hero .pitch { max-width: 720px; margin: 22px auto 0; color: var(--ink-dim); font-size: 18px; line-height: 1.5; }
+  .hero .chips { margin-top: 26px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .hero .chip {
+    font-family: var(--display); font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    padding: 8px 14px; border-radius: 999px; border: 1px solid var(--panel-edge);
+    background: var(--panel); color: var(--ink);
+  }
+
+  /* ───────────────────────── SECTIONS ───────────────────────── */
+  section { margin-top: 64px; scroll-margin-top: 84px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 8px; }
+  .sec-head h2 {
+    font-family: var(--display); font-weight: 700; letter-spacing: 2px;
+    font-size: clamp(22px, 4vw, 34px); margin: 0; color: #fff;
+    text-shadow: 0 0 16px rgba(193,79,255,.55);
+  }
+  .sec-head .tag { color: var(--cyan); font-size: 12px; letter-spacing: 2px; text-transform: uppercase; }
+  .sec-sub { color: var(--ink-dim); font-size: 17px; max-width: 760px; margin: 0 0 22px; line-height: 1.5; }
+
+  /* ───────────────────────── MAP ───────────────────────── */
+  .map-wrap { position: relative; }
+  .map {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    min-height: 440px;
+    border: 1px solid var(--panel-edge);
+    border-radius: 18px;
+    background:
+      radial-gradient(800px 400px at 50% 0%, rgba(193,79,255,.10), transparent 70%),
+      rgba(8, 3, 24, 0.55);
+    overflow: hidden;
+  }
+  .map svg.wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .node {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    min-width: 116px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--panel);
+    border: 1.5px solid var(--nc, var(--cyan));
+    box-shadow: 0 0 0 0 transparent;
+    cursor: pointer;
+    text-align: center;
+    transition: transform .18s, box-shadow .25s, background .2s;
+    backdrop-filter: blur(4px);
+  }
+  .node:hover, .node.active {
+    transform: translate(-50%, -50%) scale(1.06);
+    box-shadow: 0 0 22px var(--nc), inset 0 0 18px rgba(255,255,255,.05);
+    background: rgba(40, 18, 86, 0.92);
+  }
+  .node .ico { font-size: 22px; line-height: 1; }
+  .node .name { font-family: var(--display); font-size: 12.5px; font-weight: 700; letter-spacing: .6px; margin-top: 5px; color: #fff; }
+  .node .tl { font-size: 12px; color: var(--ink-dim); margin-top: 3px; }
+  .node .mode-dot {
+    position: absolute; top: -7px; right: -7px; width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--bg-0);
+  }
+
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 16px; font-size: 13px; color: var(--ink-dim); }
+  .legend .it { display: flex; align-items: center; gap: 7px; }
+  .legend .sw { width: 13px; height: 13px; border-radius: 4px; }
+
+  /* Detail panel */
+  .detail {
+    margin-top: 18px;
+    border: 1px solid var(--panel-edge);
+    border-radius: 16px;
+    background: var(--panel);
+    padding: 22px;
+    min-height: 120px;
+  }
+  .detail.empty { color: var(--ink-dim); font-style: italic; display: flex; align-items: center; justify-content: center; }
+  .detail h3 { font-family: var(--display); margin: 0 0 4px; font-size: 20px; color: #fff; display: flex; align-items: center; gap: 10px; }
+  .detail .role { color: var(--ink-dim); font-size: 16px; line-height: 1.5; margin: 10px 0 16px; }
+  .detail .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 720px) { .detail .grid2 { grid-template-columns: 1fr; } }
+  .detail h4 { font-family: var(--display); font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--cyan); margin: 0 0 8px; }
+  .filelist, .edgelist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .filelist code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px;
+    color: var(--lime); background: rgba(180,255,57,.07); padding: 4px 8px; border-radius: 7px;
+    border: 1px solid rgba(180,255,57,.18); display: inline-block;
+  }
+  .edgelist li { font-size: 14px; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+  .edgelist .arrow { color: var(--magenta); }
+
+  /* ───────────────────────── JOURNEYS ───────────────────────── */
+  .journey-tabs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .jtab {
+    font-family: var(--display); font-size: 12px; letter-spacing: 1px;
+    padding: 10px 16px; border-radius: 12px; cursor: pointer;
+    border: 1px solid var(--panel-edge); background: var(--panel); color: var(--ink-dim);
+    transition: all .2s;
+  }
+  .jtab:hover { color: #fff; }
+  .jtab.on { color: #fff; border-color: var(--cyan); box-shadow: 0 0 16px rgba(45,226,230,.45); background: rgba(45,226,230,.08); }
+
+  .player {
+    border: 1px solid var(--panel-edge); border-radius: 16px; background: var(--panel); padding: 22px;
+  }
+  .player .jblurb { color: var(--ink-dim); font-size: 16px; margin: 0 0 18px; line-height: 1.5; }
+
+  .track { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; row-gap: 14px; margin-bottom: 20px; }
+  .station {
+    display: flex; align-items: center; gap: 0;
+  }
+  .stbox {
+    min-width: 84px; padding: 10px 8px; border-radius: 11px; text-align: center;
+    border: 1.5px solid var(--sc, var(--cyan)); background: rgba(10,4,28,.6);
+    transition: all .25s; opacity: .55;
+  }
+  .stbox .ico { font-size: 18px; }
+  .stbox .nm { font-family: var(--display); font-size: 10.5px; letter-spacing: .4px; margin-top: 3px; color: #fff; }
+  .stbox.lit { opacity: 1; box-shadow: 0 0 18px var(--sc); transform: translateY(-2px); }
+  .beam {
+    align-self: center; width: 38px; height: 3px; margin: 0 2px; border-radius: 3px;
+    background: linear-gradient(90deg, transparent, var(--ink-dim), transparent);
+    position: relative; opacity: .4;
+  }
+  .beam.lit { opacity: 1; background: linear-gradient(90deg, var(--cyan), var(--magenta)); box-shadow: 0 0 12px var(--magenta); }
+  .beam.lit::after {
+    content: "▶"; position: absolute; right: -4px; top: -8px; color: var(--magenta);
+    font-size: 11px; animation: zip .7s linear infinite;
+  }
+  @keyframes zip { 0%{opacity:.2; transform: translateX(-10px)} 50%{opacity:1} 100%{opacity:.2; transform: translateX(2px)} }
+
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .btn {
+    font-family: var(--display); font-size: 12px; letter-spacing: 1px; cursor: pointer;
+    padding: 9px 16px; border-radius: 10px; border: 1px solid var(--cyan); color: #fff;
+    background: rgba(45,226,230,.10); transition: all .15s;
+  }
+  .btn:hover { box-shadow: 0 0 16px rgba(45,226,230,.5); }
+  .btn.mag { border-color: var(--magenta); background: rgba(255,46,151,.10); }
+  .btn.mag:hover { box-shadow: 0 0 16px rgba(255,46,151,.5); }
+  .btn:disabled { opacity: .4; cursor: default; box-shadow: none; }
+  .step-count { color: var(--ink-dim); font-size: 13px; font-family: var(--display); letter-spacing: 1px; }
+
+  .step-card {
+    border-left: 3px solid var(--magenta); padding: 14px 18px; border-radius: 0 12px 12px 0;
+    background: rgba(255,46,151,.06); min-height: 76px;
+  }
+  .step-card .hop { font-family: var(--display); font-size: 13px; letter-spacing: .5px; color: #fff; margin-bottom: 6px; }
+  .step-card .hop .from { color: var(--cyan); } .step-card .hop .to { color: var(--lime); }
+  .step-card .hop .arrow { color: var(--magenta); margin: 0 8px; }
+  .step-card .det { color: var(--ink); font-size: 15px; line-height: 1.5; }
+  .step-card code { font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: var(--lime); }
+
+  /* ───────────────────────── GLOSSARY ───────────────────────── */
+  .gloss-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)); gap: 14px; }
+  .gcard {
+    border: 1px solid var(--panel-edge); border-radius: 14px; background: var(--panel);
+    padding: 16px 18px; transition: all .2s;
+  }
+  .gcard:hover { border-color: var(--cyan); box-shadow: 0 0 16px rgba(45,226,230,.3); transform: translateY(-3px); }
+  .gcard .term { font-family: var(--display); font-size: 15px; color: var(--lime); letter-spacing: .5px; }
+  .gcard .def { color: var(--ink-dim); font-size: 14.5px; line-height: 1.5; margin-top: 7px; }
+  .gcard .def code { color: var(--cyan); font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+
+  /* ───────────────────────── EDIT NOTE ───────────────────────── */
+  .editnote {
+    border: 1px dashed var(--panel-edge); border-radius: 16px; background: rgba(180,255,57,.04);
+    padding: 24px; margin-top: 26px;
+  }
+  .editnote h3 { font-family: var(--display); color: var(--lime); margin: 0 0 10px; letter-spacing: 1px; }
+  .editnote p { color: var(--ink-dim); line-height: 1.6; margin: 8px 0; font-size: 15px; }
+  .editnote code { font-family: ui-monospace, Menlo, monospace; color: var(--cyan); font-size: 13px; }
+
+  footer.foot { text-align: center; color: var(--ink-dim); margin-top: 70px; font-size: 13px; letter-spacing: 1px; }
+  footer.foot .heart { color: var(--magenta); }
+
+  /* ───────────────────────── REDUCED MOTION ───────────────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    body::after, .hero h1, .beam.lit::after { animation: none !important; }
+    * { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="brand">BEAM<span>HOP</span></div>
+  <nav>
+    <a href="#map">Map</a>
+    <a href="#journeys">Journeys</a>
+    <a href="#components">Components</a>
+    <a href="#glossary">Glossary</a>
+    <a href="#editing">Editing</a>
+  </nav>
+</header>
+
+<main>
+  <!-- HERO -->
+  <div class="hero">
+    <h1>BEAMHOP</h1>
+    <div class="sub">architecture playground</div>
+    <p class="pitch">
+      A sandboxed <b>pi-mono</b> control surface. A Bun server beams your browser's words
+      to a coding agent living in a sandbox — and hops them across the internet to friends
+      over peer-to-peer rooms. Poke the map. Watch the data travel. Learn by playing.
+    </p>
+    <div class="chips">
+      <span class="chip">Bun monorepo</span>
+      <span class="chip">React UI</span>
+      <span class="chip">microsandbox</span>
+      <span class="chip">P2P · trystero</span>
+      <span class="chip">Tauri shell</span>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <section id="map">
+    <div class="sec-head">
+      <h2>The Map</h2><span class="tag">click a box to inspect</span>
+    </div>
+    <p class="sec-sub">
+      Every glowing box is a real part of the codebase. Lines are the wires they talk over.
+      Tap one to see what it does, which files live inside it, and who it chats with.
+    </p>
+    <div class="map-wrap">
+      <div class="map" id="mapStage">
+        <svg class="wires" id="wires" preserveAspectRatio="none"></svg>
+        <!-- nodes injected by JS -->
+      </div>
+      <div class="legend" id="legend"><!-- injected --></div>
+      <div class="detail empty" id="detail">↑ pick a box on the map to inspect it</div>
+    </div>
+  </section>
+
+  <!-- JOURNEYS -->
+  <section id="journeys">
+    <div class="sec-head">
+      <h2>Follow the Data</h2><span class="tag">press play ▶</span>
+    </div>
+    <p class="sec-sub">
+      The best way to understand a system is to ride along with one message. Pick a story,
+      then hit <b>Play</b> (or <b>Step</b>) and watch a beam hop from box to box.
+    </p>
+    <div class="journey-tabs" id="jtabs"><!-- injected --></div>
+    <div class="player">
+      <p class="jblurb" id="jblurb"></p>
+      <div class="track" id="track"><!-- injected --></div>
+      <div class="controls">
+        <button class="btn mag" id="playBtn">▶ Play</button>
+        <button class="btn" id="stepBtn">Step ⏭</button>
+        <button class="btn" id="resetBtn">⏮ Reset</button>
+        <span class="step-count" id="stepCount"></span>
+      </div>
+      <div class="step-card" id="stepCard"><!-- injected --></div>
+    </div>
+  </section>
+
+  <!-- COMPONENTS (text reference) -->
+  <section id="components">
+    <div class="sec-head">
+      <h2>Component Cheatsheet</h2><span class="tag">the same boxes, in words</span>
+    </div>
+    <p class="sec-sub">A scannable list of every box on the map, for quick reference.</p>
+    <div class="gloss-grid" id="compList"><!-- injected --></div>
+  </section>
+
+  <!-- GLOSSARY -->
+  <section id="glossary">
+    <div class="sec-head">
+      <h2>Kid-Friendly Glossary</h2><span class="tag">no jargon left behind</span>
+    </div>
+    <p class="sec-sub">Fancy words, explained like we're five (because that's the fun way).</p>
+    <div class="gloss-grid" id="glossList"><!-- injected --></div>
+  </section>
+
+  <!-- EDIT NOTE -->
+  <section id="editing">
+    <div class="sec-head"><h2>Editing This Doc</h2><span class="tag">it's alive 🌱</span></div>
+    <div class="editnote">
+      <h3>This page redraws itself from data.</h3>
+      <p>
+        Open this file and scroll to the <code>&lt;script&gt;</code> block near the bottom.
+        All the content lives in three arrays: <code>COMPONENTS</code>, <code>JOURNEYS</code>,
+        and <code>GLOSSARY</code>. Edit the <i>data</i> — never the markup — and everything
+        (the map, the wires, the journeys, the cheatsheet) re-renders automatically.
+      </p>
+      <p>
+        <b>Add a box?</b> push a new entry to <code>COMPONENTS</code> with an <code>x</code>/<code>y</code>
+        position (in %), a <code>color</code>, and a <code>talksTo</code> list of other ids.
+        <b>Add a story?</b> push to <code>JOURNEYS</code> with ordered <code>steps</code>.
+        <b>New word to explain?</b> push to <code>GLOSSARY</code>.
+      </p>
+      <p>
+        When we discuss an architectural change, Claude updates these arrays and the picture
+        stays true to the code. No build step, no dependencies — just save and refresh.
+      </p>
+    </div>
+  </section>
+
+  <footer class="foot">
+    built to be poked &amp; played with · made with <span class="heart">♥</span> for beamhop
+  </footer>
+</main>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════════
+   ░▒▓  DATA  ▓▒░   — edit THIS, not the markup. Everything below renders it.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Each component is a box on the map.
+   id        unique key (used by talksTo + journeys)
+   label     display name
+   ico       an emoji
+   color     CSS color (drives the neon glow)
+   x, y      position on the map, in % (0–100)
+   mode      "host" | "guest" | "shared"  (just a colored dot + legend)
+   tagline   one short line
+   role      a paragraph: what it actually does
+   files     real paths in the repo that live in this box
+   talksTo   ids of components it has a wire to (drawn as connectors)        */
+const COMPONENTS = [
+  {
+    id: "tauri", label: "Tauri Shell", ico: "🖥️", color: "var(--blue)",
+    x: 16, y: 14, mode: "host",
+    tagline: "the desktop app wrapper",
+    role: "A native macOS app (Rust + Tauri v2). On launch it spawns the Bun host as a bundled sidecar process, then loads the web UI in a webview pointed at 127.0.0.1:5179. Currently a partial scaffold — the wiring exists, the polish doesn't yet.",
+    files: ["apps/tauri/src/lib.rs", "apps/tauri/tauri.conf.json", "scripts/prepare-tauri.sh"],
+    talksTo: ["web", "host"]
+  },
+  {
+    id: "web", label: "Web UI", ico: "🪟", color: "var(--cyan)",
+    x: 50, y: 22, mode: "shared",
+    tagline: "one React app, two personalities",
+    role: "A single React 18 codebase that runs in TWO modes. As a HOST it talks to a local pi agent over a /rpc WebSocket. As a GUEST (the static SPA) it has no local agent and instead joins P2P rooms to watch & collaborate on someone else's session. App.tsx sniffs which mode it's in via env.ts probeHostContext().",
+    files: ["apps/host/web/src/App.tsx", "apps/host/web/src/env.ts", "apps/host/web/src/components/*", "apps/host/web/src/hooks/useRpcClient.ts"],
+    talksTo: ["host", "room", "protocol"]
+  },
+  {
+    id: "host", label: "Bun Host", ico: "🛰️", color: "var(--magenta)",
+    x: 50, y: 50, mode: "host",
+    tagline: "the fullstack server (port 5179)",
+    role: "A Bun server that does everything at once: serves the bundled React UI on /*, and upgrades /rpc to a WebSocket. It answers some commands itself (list_sessions, list_sandboxes, clear_all_sessions) and forwards the rest down into the sandbox bridge.",
+    files: ["apps/host/src/server.ts", "apps/host/src/sessions.ts", "apps/host/build.ts", "apps/host/build-spa.ts"],
+    talksTo: ["bridge", "protocol"]
+  },
+  {
+    id: "bridge", label: "SandboxBridge", ico: "🌉", color: "var(--amber)",
+    x: 50, y: 78, mode: "host",
+    tagline: "attaches to a sandbox, runs pi",
+    role: "Per WebSocket connection, the bridge attaches to an already-running microsandbox (it never starts/stops the sandbox itself) and execs `pi --mode rpc` inside it — no PTY, so JSONL framing stays intact. It pipes commands to pi's stdin and pumps pi's stdout/stderr back out, split into clean lines by LineSplitter.",
+    files: ["apps/host/src/bridge.ts"],
+    talksTo: ["pi", "protocol"]
+  },
+  {
+    id: "pi", label: "pi agent", ico: "🤖", color: "var(--lime)",
+    x: 84, y: 78, mode: "host",
+    tagline: "the coding agent, in a sandbox",
+    role: "The pi-mono coding agent running in RPC mode inside the microsandbox. It reads JSONL commands on stdin, streams JSONL events on stdout, and persists conversations as session files under ~/.pi/agent/sessions/.",
+    files: ["(external binary `pi`, run inside microsandbox)"],
+    talksTo: []
+  },
+  {
+    id: "protocol", label: "@beamhop/protocol", ico: "📜", color: "var(--purple)",
+    x: 85, y: 30, mode: "shared",
+    tagline: "the shared rulebook (zero deps)",
+    role: "A tiny shared library both the server and the UI lean on. LineSplitter does strict newline-only JSONL framing (never the readline trick, which would corrupt JSON on unicode line separators). toPiWire/fromPiWire translate short UI command names into pi's snake_case. It also owns the shared types: WireMessage, SessionSummary, and the RoomCtrl union for multiplayer.",
+    files: ["packages/protocol/src/framing.ts", "packages/protocol/src/protocol.ts", "packages/protocol/src/index.ts"],
+    talksTo: []
+  },
+  {
+    id: "room", label: "P2P Rooms", ico: "📡", color: "var(--pink)",
+    x: 17, y: 56, mode: "guest",
+    tagline: "trystero · WebRTC · Nostr",
+    role: "The multiplayer layer. trystero finds peers via public Nostr relays (no server to run) then opens encrypted WebRTC data channels. An OWNER broadcasts its shared sessions, sends snapshots on request, and fans out live frames; PARTICIPANTS open a session, hydrate from the snapshot, and (in collab mode) send inputs back. P2PTransport makes a remote session look just like a local one to the reducer.",
+    files: ["apps/host/web/src/multiplayer/room.ts", "apps/host/web/src/multiplayer/RoomManager.ts", "apps/host/web/src/multiplayer/P2PTransport.ts", "apps/host/web/src/multiplayer/store.ts"],
+    talksTo: ["web"]
+  }
+];
+
+/* Each journey is a "follow one message" story.
+   from / to  component ids the beam hops between
+   label      the wire/action name
+   detail     what's happening (kid-friendly, may include <code>)            */
+const JOURNEYS = [
+  {
+    id: "keystroke",
+    title: "⌨️ A keystroke round-trip (Host mode)",
+    blurb: "You type a prompt and hit enter. Watch it travel all the way down to the pi agent and back up as a streaming answer.",
+    steps: [
+      { from: "web", to: "web", label: "Composer → reducer", detail: "Your text lands in <code>Composer.tsx</code>. The app optimistically shows your message via the <code>reducer</code> and asks the transport to send it." },
+      { from: "web", to: "host", label: "RpcClient → /rpc WS", detail: "<code>RpcClient.send()</code> serializes the command to JSON and pushes it over the <code>/rpc</code> WebSocket to the Bun host." },
+      { from: "host", to: "bridge", label: "server → bridge", detail: "<code>server.ts</code> sees it's not a host-handled command, so it forwards the message into the active <code>SandboxBridge</code>." },
+      { from: "bridge", to: "pi", label: "toPiWire → pi stdin", detail: "The bridge rewrites short names with <code>toPiWire()</code> (e.g. <code>new → new_session</code>) and writes one JSON line to pi's stdin." },
+      { from: "pi", to: "bridge", label: "pi streams JSONL", detail: "pi thinks, calls tools, and streams back many JSONL events on stdout. <code>LineSplitter</code> reassembles them into clean lines." },
+      { from: "bridge", to: "host", label: "fromPiWire → WS", detail: "Each parsed event passes through <code>fromPiWire()</code> and is sent back up the WebSocket to the browser." },
+      { from: "host", to: "web", label: "reducer → re-render", detail: "<code>useRpcClient</code> dispatches each frame into the <code>reducer</code>, which updates messages & stats. <code>Chat.tsx</code> re-renders the streaming answer." }
+    ]
+  },
+  {
+    id: "guest",
+    title: "🤝 A guest joins a room (P2P)",
+    blurb: "Someone opens the static Guest SPA — no local agent at all — and joins your room to watch and help on your live session.",
+    steps: [
+      { from: "web", to: "web", label: "probe → Guest mode", detail: "The SPA's <code>probeHostContext()</code> finds no <code>/rpc</code> reachable, so <code>App.tsx</code> shows the join-room screen instead of a sandbox picker." },
+      { from: "web", to: "room", label: "joinBeamhopRoom()", detail: "Room name + password go to <code>joinBeamhopRoom()</code>. trystero discovers peers via Nostr relays and opens encrypted WebRTC data channels." },
+      { from: "room", to: "web", label: "shared_sessions", detail: "The OWNER broadcasts its catalog of shared sessions (<code>RoomCtrl</code> type <code>shared_sessions</code>). The guest's roster lights up with what's available." },
+      { from: "web", to: "room", label: "open_session", detail: "Guest clicks a session → sends <code>open_session</code>. Live frames start buffering until the snapshot arrives." },
+      { from: "room", to: "web", label: "snapshot", detail: "Owner replies with a <code>snapshot</code>: the full transcript + stats. <code>P2PTransport</code> hydrates the reducer so the guest sees history instantly." },
+      { from: "room", to: "web", label: "live frames", detail: "From here, every new pi event the owner produces is fanned out as a <code>frame</code> and rendered live in the guest's Chat — same UI as the host." },
+      { from: "web", to: "room", label: "(collab) input", detail: "In collab mode the guest can send an <code>input</code>; the owner injects it into its local pi as if they'd typed it themselves." }
+    ]
+  },
+  {
+    id: "sessions",
+    title: "🗂️ Discovering past sessions",
+    blurb: "When the host UI loads, it asks 'what conversations already exist in this sandbox?' — answered without ever bothering pi.",
+    steps: [
+      { from: "web", to: "host", label: "list_sessions", detail: "The UI sends <code>list_sessions</code> over <code>/rpc</code>. This is a host-handled command — pi never sees it." },
+      { from: "host", to: "bridge", label: "bridge.listSessions()", detail: "<code>server.ts</code> calls into the bridge, which uses the pure helpers in <code>sessions.ts</code> to read the sandbox filesystem." },
+      { from: "bridge", to: "pi", label: "walk ~/.pi/agent/sessions/", detail: "It walks each <code>&lt;cwd&gt;/&lt;timestamp&gt;_&lt;uuid&gt;.jsonl</code> file, reads the header + counts messages, and grabs the first user line as a title." },
+      { from: "bridge", to: "host", label: "SessionSummary[]", detail: "Each file becomes a <code>SessionSummary</code> (path, title, cwd, updatedAt, messageCount), sorted newest-first." },
+      { from: "host", to: "web", label: "→ Sidebar", detail: "The list comes back over the WebSocket and <code>Sidebar.tsx</code> renders the clickable session history." }
+    ]
+  }
+];
+
+/* Plain-language definitions. term + def (def may include <code>).            */
+const GLOSSARY = [
+  { term: "pi / pi-mono", def: "The coding agent at the heart of it all. beamhop is basically a fancy remote control + window for talking to <code>pi</code>." },
+  { term: "microsandbox", def: "A small isolated computer-in-a-box where <code>pi</code> runs safely. The bridge attaches to one that's already running — it doesn't create or destroy it." },
+  { term: "RPC", def: "Remote Procedure Call — a fancy way to say 'send a command to a program somewhere else and get a result back.' Here it's JSON over a WebSocket." },
+  { term: "JSONL", def: "JSON Lines: one JSON object per line of text. Easy to stream — you can act on each line the moment its newline arrives." },
+  { term: "LineSplitter", def: "The little gadget that turns a messy stream of bytes back into whole JSONL lines, splitting ONLY on real newlines so unicode never breaks the JSON." },
+  { term: "WebSocket (/rpc)", def: "A two-way pipe between the browser and the Bun host that stays open, so the agent's answer can stream in piece by piece." },
+  { term: "trystero", def: "A library that lets two browsers find each other and talk directly — peer to peer — with no server in the middle." },
+  { term: "Nostr relay", def: "A public bulletin board trystero uses just to introduce peers ('hey, are you in room X?'). After the intro, talking happens directly over WebRTC." },
+  { term: "WebRTC", def: "The browser tech for direct browser-to-browser data channels. It's how guests receive live frames and send inputs." },
+  { term: "Host vs Guest", def: "HOST = has a local pi agent (via the Bun server). GUEST = browser-only, joins rooms to watch/help. Same React app, decided at runtime." },
+  { term: "snapshot", def: "A full copy of a session's transcript sent to a guest when they open it — so they instantly see all the history before live updates begin." },
+  { term: "frame", def: "A single live event from pi (a token, a tool call, a status). Owners fan frames out to everyone watching the session." },
+  { term: "reducer", def: "One pure function that takes the current state + an incoming event and returns the new state. Both local (RPC) and remote (P2P) frames feed the SAME reducer." },
+  { term: "Transport", def: "An interface with two implementations: <code>RpcClient</code> (local pi) and <code>P2PTransport</code> (remote session). The UI doesn't care which it's using." },
+  { term: "toPiWire / fromPiWire", def: "Tiny translators between the UI's friendly command names (<code>new</code>, <code>switch</code>) and pi's official names (<code>new_session</code>, <code>switch_session</code>)." }
+];
+
+const MODE_COLORS = { host: "var(--magenta)", guest: "var(--pink)", shared: "var(--purple)" };
+const MODE_LABEL  = { host: "host-side", guest: "guest-side", shared: "shared / both" };
+
+/* ════════════════════════════════════════════════════════════════════════
+   ░▒▓  RENDERERS  ▓▒░   — build the DOM from the data above.
+   ════════════════════════════════════════════════════════════════════════ */
+const byId = Object.fromEntries(COMPONENTS.map(c => [c.id, c]));
+const $ = (id) => document.getElementById(id);
+
+/* ---- MAP: nodes + SVG wires + click-to-detail ---- */
+function renderMap() {
+  const stage = $("mapStage");
+  const wires = $("wires");
+  // viewBox 0..100 so we can use the same % coords as nodes
+  wires.setAttribute("viewBox", "0 0 100 100");
+
+  // de-dupe edges (a↔b counts once)
+  const seen = new Set();
+  COMPONENTS.forEach(c => (c.talksTo || []).forEach(t => {
+    const key = [c.id, t].sort().join("~");
+    if (seen.has(key) || !byId[t]) return;
+    seen.add(key);
+    const a = c, b = byId[t];
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", a.x); line.setAttribute("y1", a.y);
+    line.setAttribute("x2", b.x); line.setAttribute("y2", b.y);
+    line.setAttribute("stroke", "rgba(193,79,255,.45)");
+    line.setAttribute("stroke-width", ".5");
+    line.setAttribute("stroke-dasharray", "1.6 1.4");
+    line.setAttribute("vector-effect", "non-scaling-stroke");
+    line.style.filter = "drop-shadow(0 0 3px rgba(193,79,255,.6))";
+    line.dataset.a = a.id; line.dataset.b = b.id;
+    wires.appendChild(line);
+  }));
+
+  // nodes
+  COMPONENTS.forEach(c => {
+    const el = document.createElement("div");
+    el.className = "node";
+    el.style.left = c.x + "%";
+    el.style.top = c.y + "%";
+    el.style.setProperty("--nc", c.color);
+    el.dataset.id = c.id;
+    el.innerHTML =
+      `<span class="mode-dot" style="background:${MODE_COLORS[c.mode]}"></span>` +
+      `<div class="ico">${c.ico}</div>` +
+      `<div class="name">${c.label}</div>` +
+      `<div class="tl">${c.tagline}</div>`;
+    el.addEventListener("click", () => selectNode(c.id));
+    stage.appendChild(el);
+  });
+
+  // legend
+  $("legend").innerHTML = Object.keys(MODE_LABEL).map(m =>
+    `<span class="it"><span class="sw" style="background:${MODE_COLORS[m]}"></span>${MODE_LABEL[m]}</span>`
+  ).join("");
+}
+
+function selectNode(id) {
+  const c = byId[id];
+  document.querySelectorAll(".node").forEach(n => n.classList.toggle("active", n.dataset.id === id));
+  // highlight connected wires
+  document.querySelectorAll("#wires line").forEach(l => {
+    const on = l.dataset.a === id || l.dataset.b === id;
+    l.setAttribute("stroke", on ? c.color : "rgba(193,79,255,.45)");
+    l.setAttribute("stroke-width", on ? ".9" : ".5");
+  });
+
+  const partners = COMPONENTS
+    .filter(o => (o.talksTo || []).includes(id) || (c.talksTo || []).includes(o.id))
+    .map(o => o.label);
+
+  const d = $("detail");
+  d.classList.remove("empty");
+  d.innerHTML =
+    `<h3>${c.ico} ${c.label}</h3>` +
+    `<div class="role">${c.role}</div>` +
+    `<div class="grid2">` +
+      `<div><h4>Files in this box</h4><ul class="filelist">${
+        c.files.map(f => `<li><code>${f}</code></li>`).join("")
+      }</ul></div>` +
+      `<div><h4>Talks to</h4><ul class="edgelist">${
+        partners.length ? partners.map(p => `<li><span class="arrow">→</span>${p}</li>`).join("")
+                        : '<li style="color:var(--ink-dim)">— nothing directly —</li>'
+      }</ul></div>` +
+    `</div>`;
+}
+
+/* ---- COMPONENT cheatsheet (text mirror of the map) ---- */
+function renderComponents() {
+  $("compList").innerHTML = COMPONENTS.map(c =>
+    `<div class="gcard" style="border-color:${c.color}33">
+       <div class="term" style="color:${c.color}">${c.ico} ${c.label}</div>
+       <div class="def">${c.tagline}.<br>${c.role}</div>
+     </div>`
+  ).join("");
+}
+
+/* ---- JOURNEYS: tabs + animated player ---- */
+let jIndex = 0, sIndex = -1, playTimer = null;
+
+function renderJourneyTabs() {
+  $("jtabs").innerHTML = JOURNEYS.map((j, i) =>
+    `<button class="jtab ${i === jIndex ? "on" : ""}" data-i="${i}">${j.title}</button>`
+  ).join("");
+  $("jtabs").querySelectorAll(".jtab").forEach(b =>
+    b.addEventListener("click", () => { selectJourney(+b.dataset.i); })
+  );
+}
+
+function selectJourney(i) {
+  stopPlay();
+  jIndex = i; sIndex = -1;
+  renderJourneyTabs();
+  const j = JOURNEYS[i];
+  $("jblurb").textContent = j.blurb;
+
+  // build the station track: ordered run of node ids the beam visits, plus
+  // the exact track positions each step maps to (so repeated nodes light precisely).
+  const order = [];
+  const stepPos = []; // stepPos[i] = { from: <pos>, to: <pos> }
+  let cursor = 0;
+  j.steps.forEach((s, k) => {
+    if (k === 0) order.push(s.from);
+    const fromPos = cursor;
+    let toPos = cursor;
+    if (s.to !== s.from) { order.push(s.to); cursor += 1; toPos = cursor; }
+    stepPos.push({ from: fromPos, to: toPos });
+  });
+
+  const track = $("track");
+  track.innerHTML = "";
+  order.forEach((id, k) => {
+    const c = byId[id];
+    const box = document.createElement("div");
+    box.className = "stbox"; box.dataset.node = id; box.dataset.pos = k;
+    box.style.setProperty("--sc", c.color);
+    box.innerHTML = `<div class="ico">${c.ico}</div><div class="nm">${c.label}</div>`;
+    track.appendChild(box);
+    if (k < order.length - 1) {
+      const beam = document.createElement("div");
+      beam.className = "beam"; beam.dataset.gap = k; // beam after position k
+      track.appendChild(beam);
+    }
+  });
+  track._order = order;
+  track._stepPos = stepPos;
+  paintStep();
+}
+
+function paintStep() {
+  const j = JOURNEYS[jIndex];
+  const total = j.steps.length;
+  $("stepCount").textContent = sIndex < 0 ? `${total} steps` : `step ${sIndex + 1} / ${total}`;
+
+  // reset visuals
+  $("track").querySelectorAll(".stbox").forEach(b => b.classList.remove("lit"));
+  $("track").querySelectorAll(".beam").forEach(b => b.classList.remove("lit"));
+
+  if (sIndex < 0) {
+    $("stepCard").innerHTML = `<div class="det" style="color:var(--ink-dim)">Press <b>Play</b> to ride along, or <b>Step</b> to go one hop at a time.</div>`;
+    return;
+  }
+
+  const step = j.steps[sIndex];
+  const { from: fromPos, to: toPos } = $("track")._stepPos[sIndex];
+  // light only the exact stations this hop touches (by track position)
+  $("track").querySelectorAll(".stbox").forEach(b => {
+    const p = +b.dataset.pos;
+    if (p === fromPos || p === toPos) b.classList.add("lit");
+  });
+  // light the beam(s) spanning from->to in the track order
+  if (toPos !== fromPos) {
+    const lo = Math.min(fromPos, toPos), hi = Math.max(fromPos, toPos);
+    $("track").querySelectorAll(".beam").forEach(b => {
+      const g = +b.dataset.gap;
+      if (g >= lo && g < hi) b.classList.add("lit");
+    });
+  }
+
+  const fc = byId[step.from], tc = byId[step.to];
+  const hop = step.from === step.to
+    ? `<span class="from">${fc.ico} ${fc.label}</span><span class="arrow">↺</span><span class="to">${tc.label}</span>`
+    : `<span class="from">${fc.ico} ${fc.label}</span><span class="arrow">→</span><span class="to">${tc.ico} ${tc.label}</span>`;
+  $("stepCard").innerHTML =
+    `<div class="hop">${hop} &nbsp;·&nbsp; ${step.label}</div><div class="det">${step.detail}</div>`;
+}
+
+function stepForward() {
+  const j = JOURNEYS[jIndex];
+  if (sIndex < j.steps.length - 1) { sIndex++; paintStep(); return true; }
+  return false; // reached the end
+}
+
+function startPlay() {
+  stopPlay();
+  if (sIndex >= JOURNEYS[jIndex].steps.length - 1) sIndex = -1; // restart if at end
+  $("playBtn").textContent = "⏸ Pause";
+  $("playBtn").dataset.playing = "1";
+  playTimer = setInterval(() => { if (!stepForward()) stopPlay(); }, 1500);
+  stepForward();
+}
+function stopPlay() {
+  if (playTimer) clearInterval(playTimer);
+  playTimer = null;
+  const b = $("playBtn");
+  if (b) { b.textContent = "▶ Play"; delete b.dataset.playing; }
+}
+
+/* ---- GLOSSARY ---- */
+function renderGlossary() {
+  $("glossList").innerHTML = GLOSSARY.map(g =>
+    `<div class="gcard"><div class="term">${g.term}</div><div class="def">${g.def}</div></div>`
+  ).join("");
+}
+
+/* ---- WIRE UP ---- */
+function init() {
+  renderMap();
+  renderComponents();
+  renderGlossary();
+  renderJourneyTabs();
+  selectJourney(0);
+
+  $("playBtn").addEventListener("click", () => {
+    if ($("playBtn").dataset.playing) stopPlay(); else startPlay();
+  });
+  $("stepBtn").addEventListener("click", () => { stopPlay(); stepForward(); });
+  $("resetBtn").addEventListener("click", () => { stopPlay(); sIndex = -1; paintStep(); });
+
+  // a gentle default: pre-select the central host node so the detail panel isn't empty
+  selectNode("host");
+}
+
+init();
+</script>
+</body>
+</html>

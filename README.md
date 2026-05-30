@@ -34,11 +34,11 @@ This wires up all workspaces, including the `workspace:*` link from
 
 ## Common scripts (run from repo root)
 
-| Command             | What it does                                                          |
-|---------------------|----------------------------------------------------------------------|
-| `bun run dev`       | Hot-reload the host (`apps/host/src/server.ts`) — serves UI + `/rpc` on `:5179`, with Bun HMR for the React app |
-| `bun run build:host`| Bundle the host + UI into `apps/host/dist/` (self-contained)         |
-| `bun test`          | Run all workspace tests                                              |
+| Command              | What it does                                                                                                    |
+| -------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `bun run dev`        | Hot-reload the host (`apps/host/src/server.ts`) — serves UI + `/rpc` on `:5179`, with Bun HMR for the React app |
+| `bun run build:host` | Bundle the host + UI into `apps/host/dist/` (self-contained)                                                    |
+| `bun test`           | Run all workspace tests                                                                                         |
 
 ## Typical dev loop
 
@@ -56,3 +56,11 @@ Each package has its own README with deeper detail.
 - [`apps/host`](./apps/host/README.md) — the Bun fullstack host (server + React UI)
 - [`apps/tauri`](./apps/tauri/README.md) — desktop shell (placeholder)
 - [`packages/protocol`](./packages/protocol/README.md) — shared wire helpers
+
+## FAQ
+
+### How do I run an msb sandbox with pi ?
+
+```
+msb run -v $HOME/.pi/:/root/.pi --name pi -d oven/bun && msb exec pi -- bun i -g @earendil-works/pi-coding-agent
+```

@@ -9,8 +9,20 @@
 import type { SandboxFs } from "microsandbox";
 import type { SessionSummary } from "@beamhop/protocol";
 
-/** Root of pi's per-session JSONL store inside the sandbox. */
-const SESSIONS_ROOT = "/.pi/agent/sessions";
+/** Root of pi's per-session JSONL store inside the sandbox (pi runs as root). */
+const SESSIONS_ROOT = "/root/.pi/agent/sessions";
+
+/** List a dir, treating "does not exist" as empty rather than throwing. */
+async function listOrEmpty(
+  fs: SandboxFs,
+  path: string,
+): Promise<Awaited<ReturnType<SandboxFs["list"]>>> {
+  try {
+    return await fs.list(path);
+  } catch {
+    return [];
+  }
+}
 
 /**
  * One parsed line of a pi session file. Only the fields we read are listed;
@@ -38,7 +50,7 @@ function isSessionRecord(rec: unknown): rec is SessionRecord {
  * number of files removed.
  */
 export async function clearAllSessions(fs: SandboxFs): Promise<number> {
-  const cwdDirs = await fs.list(SESSIONS_ROOT);
+  const cwdDirs = await listOrEmpty(fs, SESSIONS_ROOT);
   let removed = 0;
   await Promise.all(
     cwdDirs
@@ -71,7 +83,7 @@ export async function clearAllSessions(fs: SandboxFs): Promise<number> {
  * newest-first by modification time.
  */
 export async function listSessions(fs: SandboxFs): Promise<SessionSummary[]> {
-  const cwdDirs = await fs.list(SESSIONS_ROOT);
+  const cwdDirs = await listOrEmpty(fs, SESSIONS_ROOT);
   const out: SessionSummary[] = [];
   await Promise.all(
     cwdDirs
