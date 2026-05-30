@@ -68,3 +68,69 @@ export function toPiWire(msg: WireMessage): WireMessage {
 export function fromPiWire(msg: WireMessage): WireMessage {
   return msg;
 }
+
+// --- multiplayer room protocol ----------------------------------------------
+//
+// Beamhop rooms let a Host share its live pi sessions with peers over p2p
+// (trystero). These control messages travel on a dedicated trystero "ctrl"
+// action channel, kept separate from the pi event frames so the two can't
+// collide. The pi frames themselves ride inside `{ t: "frame", frame }`.
+//
+// Terminology: a **Host** runs the Bun host + local sandboxes and can share
+// sessions; a **Guest** is browser-only and can only join. The **Owner** of a
+// shared session is the Host whose sandbox runs it; everyone else viewing it is
+// a **Participant**.
+
+/** One pi session a Host is sharing into the room. */
+export interface SharedSessionMeta {
+  /**
+   * Globally-unique-in-room id: `${ownerId}:${sessionFile}`. Namespaced by
+   * owner so multiple Hosts sharing into one room never collide.
+   */
+  sessionKey: string;
+  /** trystero peer id of the owning Host. */
+  ownerId: string;
+  /** Owner's display name at share time (informational; roster is authoritative). */
+  ownerName: string;
+  /** Absolute session-file path inside the owner's sandbox (the local id). */
+  sessionFile: string;
+  title: string;
+  cwd: string;
+  updatedAt: number | null;
+  messageCount: number;
+  /** Per-room policy this owner set for this session. */
+  mode: "readonly" | "collab";
+}
+
+/**
+ * Room control messages exchanged over the trystero "ctrl" action.
+ *
+ * `messages`/`stats` in `snapshot` are the web app's transcript types, but the
+ * protocol package can't depend on the web app, so they're typed loosely here
+ * and re-narrowed on the web side (fed straight into the existing reducer).
+ */
+export type RoomCtrl =
+  // Owner → all: "here is everything I'm currently sharing". Sent on join, on
+  // each peer-join, and whenever the owner's share set changes.
+  | { t: "shared_sessions"; ownerId: string; ownerName: string; sessions: SharedSessionMeta[] }
+  // Participant → owner: "send me the current state of this session".
+  | { t: "open_session"; sessionKey: string }
+  // Owner → requester: full transcript snapshot to hydrate a per-session reducer.
+  | {
+      t: "snapshot";
+      sessionKey: string;
+      messages: unknown[];
+      stats: Record<string, unknown>;
+      currentModelId: string | null;
+    }
+  // Owner → all: one live pi event frame for a shared session.
+  | { t: "frame"; sessionKey: string; frame: Record<string, unknown> }
+  // Participant → owner: a prompt/steer to inject into the owner's pi (collab only).
+  | { t: "input"; sessionKey: string; kind: "prompt" | "steer"; message: string; fromName: string }
+  // Anyone → all: presence heartbeat — which session I'm currently viewing.
+  | { t: "presence"; name: string; viewing: string | null };
+
+/** trystero action label carrying {@link RoomCtrl} payloads. Keep ≤12 bytes. */
+export const ROOM_CTRL_ACTION = "ctrl";
+/** trystero appId namespacing all beamhop rooms on the signaling layer. */
+export const ROOM_APP_ID = "beamhop";

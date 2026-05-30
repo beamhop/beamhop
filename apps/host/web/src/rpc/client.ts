@@ -6,6 +6,8 @@
  * Inbound: pi events (`agent_start`, `message_update`, …) plus a handful
  * of host-synthesized control messages (`ready`, `error`, `host_stderr`).
  */
+import type { Transport } from "./transport";
+
 export type Json = Record<string, unknown>;
 
 export type RpcStatus = "idle" | "connecting" | "open" | "closed" | "error";
@@ -18,7 +20,7 @@ export interface RpcClientOptions {
   onStatus: (status: RpcStatus, detail?: string) => void;
 }
 
-export class RpcClient {
+export class RpcClient implements Transport {
   private ws: WebSocket | null = null;
   private opts: RpcClientOptions;
   private outbox: string[] = [];

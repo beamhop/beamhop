@@ -518,3 +518,182 @@
   font-size: 10.5px; color: var(--tx-faint); background: var(--bg-panel); }
 .cp-foot b { color: var(--tx-dim); font-weight: 600; }
 .cp-foot-r { margin-left: auto; }
+
+/* ── multiplayer: room dialog, share pills, presence, guest screen ───────── */
+
+.roomleave,
+.sharepill [role="button"] {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.peerroster {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 4px;
+}
+.peeravatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: -4px;
+  border-radius: 999px;
+  border: 1px solid var(--bg);
+  background: var(--card);
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.peeravatar.self {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+/* per-session share toggle in the sidebar */
+.sharepill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 11px;
+  cursor: pointer;
+}
+.sharepill:hover {
+  color: var(--text-dim);
+  border-color: var(--text-faint);
+}
+.sharepill.on {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.roomsessions {
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+/* room join dialog */
+.roomdialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: oklch(0.1 0.01 260 / 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+}
+.roomdialog {
+  width: min(420px, 92vw);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 20px 60px oklch(0.1 0.01 260 / 0.5);
+}
+.roomdialog-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.roomdialog-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.roomdialog-hint {
+  color: var(--text-faint);
+  font-weight: 400;
+}
+.roomdialog-input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+.roomdialog-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.roomdialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.roomdialog-cancel,
+.roomdialog-join {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+.roomdialog-join {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.roomdialog-join:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* composer read-only notice (participant on a view-only session) */
+.composer-disabled {
+  padding: 14px 16px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* guest join landing screen (static SPA, no local agent) */
+.appshell.guest {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.guest-join {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100vh;
+}
+.guest-join-card {
+  width: min(440px, 92vw);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+}
+.guest-join-blurb {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+}

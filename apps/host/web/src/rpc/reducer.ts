@@ -116,7 +116,16 @@ export type Action =
   | { kind: "rpc"; msg: Json }
   | { kind: "dialogAnswered"; id: string }
   | { kind: "setStats"; patch: Partial<Stats> }
-  | { kind: "reset" };
+  | { kind: "reset" }
+  // Multiplayer: a Participant hydrating an opened remote session from the
+  // Owner's already-built transcript (not raw pi records — these are the
+  // reducer's own Message[] shipped over p2p, so we load them verbatim).
+  | {
+      kind: "snapshot";
+      messages: Message[];
+      stats: Partial<Stats>;
+      currentModelId: string | null;
+    };
 
 /** Update the last assistant message in the transcript immutably. */
 function updateAssistant(
@@ -175,6 +184,20 @@ export function reduce(state: State, action: Action): State {
 
     case "setStats":
       return { ...state, stats: { ...state.stats, ...action.patch } };
+
+    case "snapshot":
+      // Wholesale-replace the transcript with the Owner's snapshot. Live
+      // streaming flags are cleared; subsequent `{kind:"rpc"}` frames relayed
+      // from the Owner drive it forward exactly as a local connection would.
+      return {
+        ...state,
+        messages: action.messages,
+        streaming: false,
+        currentTurnId: null,
+        currentModelId: action.currentModelId ?? state.currentModelId,
+        stats: { ...state.stats, ...action.stats },
+        status: "open",
+      };
 
     case "dialogAnswered":
       if (state.dialog?.id !== action.id) return state;

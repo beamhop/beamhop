@@ -20,6 +20,9 @@ export interface ComposerProps {
   setQueueMode: (m: "steer" | "followUp") => void;
   onSlash: (c: PiCommand) => void;
   onOpenPalette: () => void;
+  /** When set, the composer is replaced by a read-only notice (e.g. viewing
+   * a view-only shared session). */
+  disabledReason?: string | null;
 }
 
 export function Composer(props: ComposerProps) {
@@ -37,6 +40,7 @@ export function Composer(props: ComposerProps) {
     setQueueMode,
     onSlash,
     onOpenPalette,
+    disabledReason,
   } = props;
   const [text, setText] = useState("");
   const [showModel, setShowModel] = useState(false);
@@ -101,6 +105,16 @@ export function Composer(props: ComposerProps) {
   };
 
   const sendLabel = streaming ? (queueMode === "steer" ? "Steer" : "Follow-up") : "Send";
+
+  if (disabledReason) {
+    return (
+      <div className="composer" data-testid="composer">
+        <div className="composer-disabled mono" data-testid="composer-disabled">
+          {disabledReason}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="composer" data-testid="composer">

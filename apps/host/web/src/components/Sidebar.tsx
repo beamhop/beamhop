@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import type { SharedSessionMeta } from "@beamhop/protocol";
 import type { SessionSummary } from "../types";
+import { useMultiplayer } from "../multiplayer/store";
 
 function timeAgo(ts: number | null): string {
   if (ts == null) return "";
@@ -11,14 +13,84 @@ function timeAgo(ts: number | null): string {
   return new Date(ts).toISOString().slice(0, 10);
 }
 
+/** Per-session share control shown next to a local session when in a room. */
+function ShareControl({
+  shareMode,
+  onShare,
+  onUnshare,
+  onCycleMode,
+  slug,
+}: {
+  shareMode: "readonly" | "collab" | null;
+  onShare: () => void;
+  onUnshare: () => void;
+  onCycleMode: () => void;
+  slug: string;
+}) {
+  if (!shareMode) {
+    return (
+      <span
+        className="sharepill"
+        role="button"
+        tabIndex={0}
+        title="Share this session into the room"
+        onClick={(e) => {
+          e.stopPropagation();
+          onShare();
+        }}
+        data-testid={`share-toggle-${slug}`}
+      >
+        share
+      </span>
+    );
+  }
+  return (
+    <span className="sharepill on" data-testid={`share-toggle-${slug}`}>
+      <span
+        role="button"
+        tabIndex={0}
+        title="Toggle read-only / collaborative"
+        onClick={(e) => {
+          e.stopPropagation();
+          onCycleMode();
+        }}
+        data-testid={`share-mode-${slug}`}
+      >
+        {shareMode === "collab" ? "collab" : "view-only"}
+      </span>
+      <span
+        role="button"
+        tabIndex={0}
+        title="Stop sharing"
+        onClick={(e) => {
+          e.stopPropagation();
+          onUnshare();
+        }}
+        data-testid={`share-unshare-${slug}`}
+        style={{ marginLeft: 6 }}
+      >
+        ✕
+      </span>
+    </span>
+  );
+}
+
 function SessionItem({
   s,
   active,
   onClick,
+  share,
 }: {
   s: SessionSummary;
   active: boolean;
   onClick: () => void;
+  /** Share control props, present only when the user is in a room (Host). */
+  share?: {
+    mode: "readonly" | "collab" | null;
+    onShare: () => void;
+    onUnshare: () => void;
+    onCycleMode: () => void;
+  };
 }) {
   const slug = s.sessionId ?? s.path;
   return (
@@ -38,7 +110,49 @@ function SessionItem({
         <span className="sessname">{s.title || "(untitled)"}</span>
         <span className="sessmeta mono">{s.messageCount} msgs</span>
       </span>
-      <span className="sesstime mono">{timeAgo(s.updatedAt)}</span>
+      {share ? (
+        <ShareControl
+          shareMode={share.mode}
+          onShare={share.onShare}
+          onUnshare={share.onUnshare}
+          onCycleMode={share.onCycleMode}
+          slug={slug}
+        />
+      ) : (
+        <span className="sesstime mono">{timeAgo(s.updatedAt)}</span>
+      )}
+    </button>
+  );
+}
+
+/** A shared session from the room catalog (owned by some Host in the room). */
+function RoomSessionItem({
+  m,
+  active,
+  onOpen,
+}: {
+  m: SharedSessionMeta;
+  active: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      className={"sessitem" + (active ? " active" : "")}
+      onClick={onOpen}
+      title={`${m.title} — ${m.ownerName}`}
+      data-testid={`shared-session-${m.sessionKey}`}
+    >
+      <span
+        className="provdot"
+        style={{ background: active ? "var(--accent)" : "var(--tx-faint)" }}
+      />
+      <span className="sesscol">
+        <span className="sessname">{m.title || "(untitled)"}</span>
+        <span className="sessmeta mono">
+          {m.ownerName} · {m.mode === "collab" ? "collab" : "view-only"}
+        </span>
+      </span>
+      <span className="sesstime mono">{timeAgo(m.updatedAt)}</span>
     </button>
   );
 }
@@ -49,9 +163,22 @@ export interface SidebarProps {
   onSelect: (path: string) => void;
   onNew: () => void;
   onClearAll: () => void;
+  /** True when running as a Host (can run + share local sessions). */
+  isHost: boolean;
 }
 
-export function Sidebar({ sessions, activePath, onSelect, onNew, onClearAll }: SidebarProps) {
+export function Sidebar({ sessions, activePath, onSelect, onNew, onClearAll, isHost }: SidebarProps) {
+  const mp = useMultiplayer();
+  const inRoom = mp.room != null;
+  // Owner's currently-shared sessions, keyed by sessionFile, for the toggle UI.
+  const myShares = useMemo(() => {
+    const map = new Map<string, "readonly" | "collab">();
+    if (!mp.room) return map;
+    for (const m of mp.room.catalog) {
+      if (m.ownerId === mp.room.selfId) map.set(m.sessionFile, m.mode);
+    }
+    return map;
+  }, [mp.room]);
   const [q, setQ] = useState("");
   // Two-step confirm so a misclick doesn't nuke history. Auto-revert
   // after a few seconds so the button doesn't stay in a scary state.
@@ -124,11 +251,58 @@ export function Sidebar({ sessions, activePath, onSelect, onNew, onClearAll }: S
                   s={s}
                   active={s.path === activePath}
                   onClick={() => onSelect(s.path)}
+                  share={
+                    isHost && inRoom
+                      ? {
+                          mode: myShares.get(s.path) ?? null,
+                          onShare: () => mp.shareSession(s.path, "collab"),
+                          onUnshare: () => mp.unshareSession(s.path),
+                          onCycleMode: () =>
+                            mp.setSessionMode(
+                              s.path,
+                              myShares.get(s.path) === "collab" ? "readonly" : "collab",
+                            ),
+                        }
+                      : undefined
+                  }
                 />
               ))}
             </div>
           ))}
       </div>
+
+      {inRoom && (
+        <div className="roomsessions" data-testid="room-sessions">
+          <div className="grouphdr mono">room sessions</div>
+          {mp.room!.catalog.filter((m) => m.ownerId !== mp.room!.selfId).length === 0 && (
+            <div className="emptyq mono">no shared sessions yet</div>
+          )}
+          {(() => {
+            // Group the combined catalog by owner; hide our own (we see those
+            // in the local list above with share toggles).
+            const others = mp.room!.catalog.filter((m) => m.ownerId !== mp.room!.selfId);
+            const byOwner = new Map<string, SharedSessionMeta[]>();
+            for (const m of others) {
+              const arr = byOwner.get(m.ownerName);
+              if (arr) arr.push(m);
+              else byOwner.set(m.ownerName, [m]);
+            }
+            return [...byOwner.entries()].map(([owner, metas]) => (
+              <div className="sessgroup" key={owner}>
+                <div className="grouphdr mono">{owner}</div>
+                {metas.map((m) => (
+                  <RoomSessionItem
+                    key={m.sessionKey}
+                    m={m}
+                    active={m.sessionKey === mp.room!.openSessionKey}
+                    onOpen={() => mp.openShared(m.sessionKey)}
+                  />
+                ))}
+              </div>
+            ));
+          })()}
+        </div>
+      )}
 
       {sessions && sessions.length > 0 && (
         <div className="sideclear">

@@ -8,15 +8,16 @@ import { Inspector } from "./components/Inspector";
 import { SandboxPrompt } from "./components/SandboxPrompt";
 import { TitleBar } from "./components/TitleBar";
 import { ToastStack } from "./components/ToastStack";
+import { RoomBar } from "./components/RoomBar";
+import { PeerRoster } from "./components/PeerRoster";
 import { buildPaletteItems } from "./components/palette/buildPaletteItems";
 import { type PiCommand } from "./data/commands";
 import { type PiModel, type ThinkingLevel } from "./data/models";
-import { type RpcStatus } from "./rpc/client";
+import { type Json, type RpcStatus } from "./rpc/client";
 import { useRpcClient } from "./hooks/useRpcClient";
 import { useToast } from "./hooks/useToast";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
-  SANDBOX_KEY,
   forgetSessionFile,
   loadInitialSandbox,
   rememberSandbox,
@@ -25,17 +26,72 @@ import {
 } from "./hooks/useSessionPersistence";
 import { initialState, reduce } from "./rpc/reducer";
 import {
+  MultiplayerProvider,
+  useMultiplayer,
+  useMultiplayerState,
+  type RoomBindings,
+} from "./multiplayer/store";
+import { P2PTransport } from "./multiplayer/P2PTransport";
+import { guessHostContext, probeHostContext, rpcUrl, type AppContext } from "./env";
+import {
   ACCENTS,
   TWEAK_DEFAULTS,
   type DialogAnswer,
+  type Message,
   type QueueState,
+  type Stats,
   type Toggles,
   type Tweaks,
 } from "./types";
 
+/**
+ * Root: owns the multiplayer API + host/guest context detection, provides the
+ * multiplayer context, then renders the real app. The multiplayer manager's
+ * Owner-side hooks (snapshot/inject/describe) and the participant frame sink
+ * are supplied via a ref that always points at the live app's state.
+ */
 export default function App() {
+  // Owner/participant hooks the RoomManager calls into; filled by AppInner.
+  const bindingsRef = useRef<RoomBindings>({
+    buildSnapshot: () => null,
+    injectInput: () => {},
+    describeSession: () => ({ title: "", cwd: "", updatedAt: null, messageCount: 0 }),
+    onRemoteFrame: () => {},
+  });
+  const mp = useMultiplayerState(bindingsRef);
+
+  // Host vs Guest: optimistic guess for first paint, corrected by a probe.
+  const [ctx, setCtx] = useState<AppContext>(guessHostContext);
+  useEffect(() => {
+    let alive = true;
+    probeHostContext().then((c) => {
+      if (alive) setCtx(c);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return (
+    <MultiplayerProvider value={mp}>
+      <AppInner ctx={ctx} bindingsRef={bindingsRef} />
+    </MultiplayerProvider>
+  );
+}
+
+function AppInner({
+  ctx,
+  bindingsRef,
+}: {
+  ctx: AppContext;
+  bindingsRef: React.MutableRefObject<RoomBindings>;
+}) {
+  const isHost = ctx === "host";
+  const mp = useMultiplayer();
+
   // --- persistent settings ---
-  const [sandbox, setSandbox] = useState<string>(loadInitialSandbox);
+  // A Guest never attaches to a local sandbox.
+  const [sandbox, setSandbox] = useState<string>(() => (isHost ? loadInitialSandbox() : ""));
 
   // --- tweaks (UI chrome) ---
   const [tweaks, setTweaks] = useState<Tweaks>(TWEAK_DEFAULTS);
@@ -57,17 +113,12 @@ export default function App() {
   const [state, dispatch] = useReducer(reduce, undefined, initialState);
 
   // --- composer + control state ---
-  // Initial value is "" — once pi responds to get_available_models we adopt
-  // whatever it reports as the active model. The picker shows a loading
-  // placeholder until then.
   const [model, setModel] = useState<string>("");
   const [thinking, setThinking] = useState<ThinkingLevel>("medium");
   const [queueMode, setQueueMode] = useState<"steer" | "followUp">("steer");
   const [queue, setQueue] = useState<QueueState>({ steering: [], followUp: [] });
   const [toggles, setToggles] = useState<Toggles>({ autoCompact: true, autoRetry: true });
   const [paletteOpen, setPaletteOpen] = useState(false);
-  // When true, the sandbox picker overlays the running app so the user
-  // can switch to a different sandbox. Esc/Cancel dismisses it.
   const [wantSwitch, setWantSwitch] = useState(false);
 
   const { toasts, toast } = useToast();
@@ -84,25 +135,115 @@ export default function App() {
     nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   }, []);
 
-  // --- RPC client lifecycle ---
-  const onMessage = useCallback((msg: Record<string, unknown>) => dispatch({ kind: "rpc", msg }), []);
+  // Are we currently viewing someone else's shared session (Participant view)?
+  const viewingShared = mp.room?.openSessionKey ?? null;
+  const sharedMeta = useMemo(
+    () => mp.room?.catalog.find((m) => m.sessionKey === viewingShared) ?? null,
+    [mp.room, viewingShared],
+  );
+
+  // --- RPC client lifecycle (Host only) ---
+  const onMessage = useCallback((msg: Json) => dispatch({ kind: "rpc", msg }), []);
   const onStatus = useCallback(
     (status: RpcStatus, detail?: string) => dispatch({ kind: "status", status, detail }),
     [],
   );
-  const { wsUrl, send, request, getClient } = useRpcClient({ sandbox, onMessage, onStatus });
 
-  // Live catalogs come from pi via `response` envelopes. Until they arrive
-  // the pickers render an empty/loading state — no hardcoded fallback list.
+  // The session file currently bound to the local pi connection — what we tap
+  // and fan out to room peers when it's shared.
+  const currentSessionFileRef = useRef<string | null>(null);
+  currentSessionFileRef.current = state.currentSessionFile;
+  const onFrameTap = useCallback(
+    (frame: Json) => {
+      const f = currentSessionFileRef.current;
+      if (f) mp.onLocalFrame(f, frame);
+    },
+    [mp],
+  );
+
+  const { send, request, getClient } = useRpcClient({
+    sandbox: isHost ? sandbox : "",
+    onMessage,
+    onStatus,
+    onFrameTap,
+  });
+
+  // --- Participant transport (when viewing a shared session) ---
+  const p2pRef = useRef<P2PTransport | null>(null);
+  // Route the manager's remote frames into the live P2P transport.
+  useEffect(() => {
+    bindingsRef.current.onRemoteFrame = (_key, frame) => {
+      p2pRef.current?.deliver(frame);
+    };
+  }, [bindingsRef]);
+
+  // Open/close the P2P transport as the participant opens/closes a shared session.
+  useEffect(() => {
+    if (!viewingShared) {
+      p2pRef.current?.close();
+      p2pRef.current = null;
+      return;
+    }
+    dispatch({ kind: "reset" });
+    const t = new P2PTransport({
+      api: mp,
+      sessionKey: viewingShared,
+      onMessage: (msg) => dispatch({ kind: "rpc", msg }),
+      onSnapshot: (snap) =>
+        dispatch({
+          kind: "snapshot",
+          messages: snap.messages as Message[],
+          stats: snap.stats as Partial<Stats>,
+          currentModelId: snap.currentModelId,
+        }),
+      onStatus,
+    });
+    p2pRef.current = t;
+    t.connect();
+    return () => {
+      t.close();
+      p2pRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewingShared]);
+
+  // Live catalogs from pi.
   const models: PiModel[] = state.models ?? [];
   const commands: PiCommand[] = state.commands ?? [];
 
-  // Once pi confirms its connection is open, ask for its real catalogs +
-  // the initial session stats snapshot. If we have a persisted session
-  // path for this sandbox, switch into it FIRST (awaiting the response)
-  // before asking for messages — otherwise pi answers get_messages from
-  // the fresh-on-connect session, not the resumed one.
+  // --- Owner-side multiplayer bindings (kept fresh every render) ---
+  bindingsRef.current.buildSnapshot = (sessionFile: string) => {
+    // We can only snapshot the session currently loaded in our single reducer.
+    if (sessionFile !== state.currentSessionFile) return null;
+    return {
+      messages: state.messages as unknown[],
+      stats: state.stats as unknown as Record<string, unknown>,
+      currentModelId: state.currentModelId,
+    };
+  };
+  bindingsRef.current.injectInput = (sessionFile, kind, message) => {
+    // Only inject if the relayed input targets the session we have loaded.
+    if (sessionFile !== state.currentSessionFile) return;
+    if (kind === "prompt") {
+      dispatch({ kind: "pushUser", text: message });
+      send({ type: "prompt", message });
+    } else {
+      send({ type: "steer", message });
+    }
+  };
+  bindingsRef.current.describeSession = (sessionFile: string) => {
+    const s = (state.sessions ?? []).find((x) => x.path === sessionFile);
+    return {
+      title: s?.title ?? "",
+      cwd: s?.cwd ?? "",
+      updatedAt: s?.updatedAt ?? null,
+      messageCount: s?.messageCount ?? 0,
+    };
+  };
+
+  // Once pi confirms open, ask for catalogs + resume the stored session.
   useEffect(() => {
+    if (!isHost) return;
     if (state.status !== "open") return;
     const client = getClient();
     if (!client) return;
@@ -115,38 +256,29 @@ export default function App() {
         if (resp.success) {
           client.send({ type: "get_messages" });
         } else {
-          // Stored path is gone — discard so we don't try again next reload.
           forgetSessionFile(sandbox);
         }
       }
       client.send({ type: "get_session_stats" });
       client.send({ type: "list_sessions" });
     })();
-  }, [state.status, sandbox, getClient]);
+  }, [isHost, state.status, sandbox, getClient]);
 
-  // Persist pi's current session file path so we can auto-resume it on
-  // the next page load.
   useEffect(() => {
-    if (state.currentSessionFile) {
-      rememberSessionFile(sandbox, state.currentSessionFile);
-    }
-  }, [state.currentSessionFile, sandbox]);
+    if (!isHost) return;
+    if (state.currentSessionFile) rememberSessionFile(sandbox, state.currentSessionFile);
+  }, [isHost, state.currentSessionFile, sandbox]);
 
-  // Refresh authoritative session stats + the sessions list every time
-  // a turn ends — that's when pi has just locked in fresh tokens/cost/
-  // context-percent AND when the session file just gained a user prompt
-  // (so newly-created sessions become visible in the sidebar).
   const wasStreamingRef = useRef(false);
   useEffect(() => {
+    if (!isHost) return;
     if (wasStreamingRef.current && !state.streaming) {
       send({ type: "get_session_stats" });
       send({ type: "list_sessions" });
     }
     wasStreamingRef.current = state.streaming;
-  }, [state.streaming, send]);
+  }, [isHost, state.streaming, send]);
 
-  // Adopt pi's reported current model when the catalog first lands, so the
-  // picker isn't stuck on an empty string.
   useEffect(() => {
     if (model) return;
     if (state.currentModelId) {
@@ -163,8 +295,16 @@ export default function App() {
     }
   }, [model, models, state.currentModelId]);
 
+  // onSend routes to the right transport: the local pi (own session) or the
+  // remote Owner (participant collab view).
   const onSend = useCallback(
     (text: string, mode: "prompt" | "steer" | "followUp") => {
+      if (viewingShared) {
+        // Participant: only prompt/steer are meaningful; both relay to Owner.
+        dispatch({ kind: "pushUser", text });
+        p2pRef.current?.send({ type: mode === "followUp" ? "prompt" : mode, message: text });
+        return;
+      }
       if (mode === "prompt") {
         dispatch({ kind: "pushUser", text });
         send({ type: "prompt", message: text });
@@ -178,13 +318,14 @@ export default function App() {
         toast("Follow-up queued", "→");
       }
     },
-    [send, toast],
+    [viewingShared, send, toast],
   );
 
   const onAbort = useCallback(() => {
+    if (viewingShared) return; // can't abort a remote agent
     send({ type: "abort" });
     toast("Aborted", "✕", "warn");
-  }, [send, toast]);
+  }, [viewingShared, send, toast]);
 
   const onPickModel = useCallback(
     (m: PiModel) => {
@@ -213,8 +354,6 @@ export default function App() {
   const onNew = useCallback(async () => {
     const client = getClient();
     if (!client) return;
-    // Forget the persisted session before starting a new one so a refresh
-    // mid-fresh-session doesn't re-resume the previous one.
     forgetSessionFile(sandbox);
     dispatch({ kind: "reset" });
     setQueue({ steering: [], followUp: [] });
@@ -224,9 +363,10 @@ export default function App() {
     toast("New session started", "+");
   }, [sandbox, toast, getClient]);
 
-  // Switch to a previously-saved session from the sidebar.
   const onSwitchSession = useCallback(
     async (path: string) => {
+      // Leaving a participant view if one is open.
+      if (viewingShared) mp.closeShared();
       const client = getClient();
       if (!client) return;
       dispatch({ kind: "reset" });
@@ -240,12 +380,9 @@ export default function App() {
         toast("Couldn't switch session", "✕", "warn");
       }
     },
-    [toast, getClient],
+    [viewingShared, mp, toast, getClient],
   );
 
-  // Delete every saved session JSONL inside the sandbox, then have pi
-  // open a fresh empty session. Persisted sessionFile is dropped so the
-  // next refresh doesn't try to switch_session to a path we just nuked.
   const onClearAll = useCallback(async () => {
     const client = getClient();
     if (!client) return;
@@ -291,16 +428,12 @@ export default function App() {
     (c: PiCommand) => {
       setPaletteOpen(false);
       if (c.name === "compact") return onCompact();
-      // For all other commands, forward as a prompt — pi expands /commands at
-      // its end. The host's protocol mapper rewrites short alias names where
-      // needed (e.g. session-name → set_session_name).
       dispatch({ kind: "pushUser", text: `/${c.name}` });
       send({ type: "prompt", message: `/${c.name}` });
     },
     [onCompact, send],
   );
 
-  // Global keyboard shortcuts: ⌘K toggles the palette, Esc aborts a run.
   useKeyboardShortcuts(
     useMemo(
       () => [
@@ -368,11 +501,6 @@ export default function App() {
   const onDialogResolve = useCallback(
     (ans: DialogAnswer) => {
       if (!state.dialog) return;
-      // Only forward the answer if the socket is actually open. If the
-      // connection dropped while the dialog was up, the answer would be
-      // queued in the client outbox and flushed on reconnect — but pi on the
-      // other side has a *fresh* RPC session that never asked the question,
-      // so the stale answer would desync the two. Drop it instead.
       if (state.status === "open") {
         send({ type: "extension_ui_response", id: state.dialog.id, ...ans });
       }
@@ -381,9 +509,6 @@ export default function App() {
     [state.dialog, state.status, send],
   );
 
-  // If the connection drops while an extension dialog is open, auto-dismiss
-  // it: pi's pending request died with the connection, so leaving the dialog
-  // up would invite the user to answer a question nobody is listening for.
   useEffect(() => {
     if (state.dialog && state.status !== "open") {
       dispatch({ kind: "dialogAnswered", id: state.dialog.id });
@@ -391,29 +516,63 @@ export default function App() {
     }
   }, [state.status, state.dialog, toast]);
 
-  const activeSession =
-    (state.sessions ?? []).find((s) => s.path === state.currentSessionFile) ?? null;
+  // The session shown in the title bar: a local one, or the shared one we view.
+  const activeSession = viewingShared
+    ? sharedMeta
+      ? { path: sharedMeta.sessionFile, sessionId: null, title: sharedMeta.title, cwd: sharedMeta.cwd, updatedAt: sharedMeta.updatedAt, messageCount: sharedMeta.messageCount, sizeBytes: 0 }
+      : null
+    : (state.sessions ?? []).find((s) => s.path === state.currentSessionFile) ?? null;
 
-  // Sandbox-prompt gate: until set, show only the prompt + an empty shell.
-  if (!sandbox) {
+  // Composer state: read-only when viewing a view-only shared session.
+  const composerDisabledReason =
+    viewingShared && sharedMeta?.mode !== "collab"
+      ? "Viewing a read-only shared session"
+      : null;
+
+  // --- Gating: Guest with no room yet → join screen; Host with no sandbox → picker ---
+  if (!isHost && !mp.room) {
+    return (
+      <div className="appshell guest" data-testid="app-shell">
+        <div className="guest-join" data-testid="guest-join-screen">
+          <div className="guest-join-card">
+            <div className="brand">
+              <span className="logo mono">π</span>
+              <span className="brandname">
+                pi<span className="brandsub">control</span>
+              </span>
+            </div>
+            <p className="guest-join-blurb">
+              Join a room to view and collaborate on shared agentic sessions. You're a
+              browser guest — you can't run a local agent, only join hosts' rooms.
+            </p>
+            <RoomBar />
+          </div>
+        </div>
+        <ToastStack toasts={toasts} />
+      </div>
+    );
+  }
+
+  if (isHost && !sandbox) {
     return (
       <div className="appshell" data-testid="app-shell">
         <SandboxPrompt
-          wsUrl={wsUrl}
+          wsUrl={rpcUrl() ?? ""}
           onSubmit={(name) => {
             rememberSandbox(name);
             setSandbox(name);
           }}
         />
+        <ToastStack toasts={toasts} />
       </div>
     );
   }
 
   return (
     <div className="appshell" data-testid="app-shell">
-      {wantSwitch && (
+      {isHost && wantSwitch && (
         <SandboxPrompt
-          wsUrl={wsUrl}
+          wsUrl={rpcUrl() ?? ""}
           initial={sandbox}
           onCancel={() => setWantSwitch(false)}
           onSubmit={(name) => {
@@ -434,17 +593,24 @@ export default function App() {
         models={models}
         stats={state.stats}
         status={state.status}
-        sandbox={sandbox}
+        sandbox={isHost ? sandbox : "guest"}
         onPalette={() => setPaletteOpen(true)}
-        onSwitchSandbox={() => setWantSwitch(true)}
+        onSwitchSandbox={() => isHost && setWantSwitch(true)}
+        roomSlot={
+          <>
+            <PeerRoster />
+            <RoomBar />
+          </>
+        }
       />
       <div className="body">
         <Sidebar
-          sessions={state.sessions}
-          activePath={state.currentSessionFile}
+          sessions={isHost ? state.sessions : []}
+          activePath={viewingShared ?? state.currentSessionFile}
           onSelect={onSwitchSession}
           onNew={onNew}
           onClearAll={onClearAll}
+          isHost={isHost}
         />
         <main className="center">
           <ChatTranscript
@@ -466,6 +632,7 @@ export default function App() {
             setQueueMode={setQueueMode}
             onSlash={runSlash}
             onOpenPalette={() => setPaletteOpen(true)}
+            disabledReason={composerDisabledReason}
           />
         </main>
         {tweaks.showEvents && (
@@ -485,11 +652,7 @@ export default function App() {
       </div>
 
       <ExtDialog req={state.dialog?.req ?? null} onResolve={onDialogResolve} />
-      <CommandPalette
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
-        items={paletteItems}
-      />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteItems} />
       <ToastStack toasts={toasts} />
     </div>
   );

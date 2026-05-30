@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { PROVIDER_DOT, type PiModel } from "../data/models";
 import type { RpcStatus } from "../rpc/client";
 import type { State } from "../rpc/reducer";
@@ -12,6 +13,8 @@ export interface TitleBarProps {
   sandbox: string;
   onPalette: () => void;
   onSwitchSandbox: () => void;
+  /** Multiplayer controls (roster + room join/leave) rendered on the right. */
+  roomSlot?: ReactNode;
 }
 
 export function TitleBar({
@@ -23,6 +26,7 @@ export function TitleBar({
   sandbox,
   onPalette,
   onSwitchSandbox,
+  roomSlot,
 }: TitleBarProps) {
   const pct = Math.round((stats.contextTokens / Math.max(1, stats.contextWindow)) * 100);
   const piModel = models.find((m) => m.name === model || m.id === model) ?? models[0];
@@ -39,6 +43,7 @@ export function TitleBar({
         <span className="titlename">{session?.title ?? "untitled session"}</span>
       </div>
       <div className="titleright">
+        {roomSlot}
         <button
           className="titlepill mono"
           onClick={onSwitchSandbox}

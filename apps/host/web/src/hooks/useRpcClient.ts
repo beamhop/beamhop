@@ -6,6 +6,13 @@ export interface UseRpcClientOptions {
   sandbox: string;
   onMessage: (msg: Json) => void;
   onStatus: (status: RpcStatus, detail?: string) => void;
+  /**
+   * Optional side-channel tap: called with every inbound pi frame right
+   * alongside `onMessage`, without altering the normal reducer path. Used by
+   * multiplayer to fan out a Host's own session frames to room peers. No-op by
+   * default; zero cost when no room is open.
+   */
+  onFrameTap?: (frame: Json) => void;
 }
 
 /**
@@ -16,7 +23,7 @@ export interface UseRpcClientOptions {
  * the few call sites that need to sequence several calls against one client
  * instance (e.g. switch_session → get_messages).
  */
-export function useRpcClient({ sandbox, onMessage, onStatus }: UseRpcClientOptions) {
+export function useRpcClient({ sandbox, onMessage, onStatus, onFrameTap }: UseRpcClientOptions) {
   // The single Bun host serves both this page and the /rpc WebSocket, so a
   // relative URL against the current origin works wherever it's served over
   // http(s). The Tauri webview serves from tauri://localhost (no host:port),
@@ -34,15 +41,20 @@ export function useRpcClient({ sandbox, onMessage, onStatus }: UseRpcClientOptio
   // not by callback identity churning on every render.
   const onMessageRef = useRef(onMessage);
   const onStatusRef = useRef(onStatus);
+  const onFrameTapRef = useRef(onFrameTap);
   onMessageRef.current = onMessage;
   onStatusRef.current = onStatus;
+  onFrameTapRef.current = onFrameTap;
 
   useEffect(() => {
     if (!sandbox) return;
     const client = new RpcClient({
       url: wsUrl,
       sandbox,
-      onMessage: (msg) => onMessageRef.current(msg),
+      onMessage: (msg) => {
+        onMessageRef.current(msg);
+        onFrameTapRef.current?.(msg);
+      },
       onStatus: (status, detail) => onStatusRef.current(status, detail),
     });
     clientRef.current = client;
