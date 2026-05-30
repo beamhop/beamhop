@@ -3,6 +3,8 @@
  * file the user was last in. On reconnect we ask pi to `switch_session` back
  * to the stored path so the transcript survives a page refresh.
  */
+import { TWEAK_DEFAULTS, type Tweaks } from "../types";
+
 export const SANDBOX_KEY = "pi-rpc:sandbox";
 const LEGACY_SNAPSHOT_KEY = "pi-rpc:snapshot";
 
@@ -36,4 +38,26 @@ export function rememberSessionFile(sandbox: string, path: string) {
 
 export function forgetSessionFile(sandbox: string) {
   localStorage.removeItem(sessionFileKey(sandbox));
+}
+
+/** UI tweaks (accent, density, developer mode, …) — survive page refreshes. */
+export const TWEAKS_KEY = "pi-rpc:tweaks";
+
+/** Load persisted tweaks, merged over defaults so new fields fill in cleanly. */
+export function loadTweaks(): Tweaks {
+  try {
+    const raw = localStorage.getItem(TWEAKS_KEY);
+    if (raw) return { ...TWEAK_DEFAULTS, ...(JSON.parse(raw) as Partial<Tweaks>) };
+  } catch {
+    // malformed/blocked storage — fall back to defaults
+  }
+  return TWEAK_DEFAULTS;
+}
+
+export function rememberTweaks(tweaks: Tweaks) {
+  try {
+    localStorage.setItem(TWEAKS_KEY, JSON.stringify(tweaks));
+  } catch {
+    // quota / private-mode failures are non-fatal
+  }
 }

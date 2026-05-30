@@ -20,8 +20,10 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
   forgetSessionFile,
   loadInitialSandbox,
+  loadTweaks,
   rememberSandbox,
   rememberSessionFile,
+  rememberTweaks,
   storedSessionFile,
 } from "./hooks/useSessionPersistence";
 import { initialState, reduce } from "./rpc/reducer";
@@ -35,7 +37,6 @@ import { P2PTransport } from "./multiplayer/P2PTransport";
 import { guessHostContext, probeHostContext, rpcUrl, type AppContext } from "./env";
 import {
   ACCENTS,
-  TWEAK_DEFAULTS,
   type DialogAnswer,
   type Message,
   type QueueState,
@@ -93,12 +94,15 @@ function AppInner({
   // A Guest never attaches to a local sandbox.
   const [sandbox, setSandbox] = useState<string>(() => (isHost ? loadInitialSandbox() : ""));
 
-  // --- tweaks (UI chrome) ---
-  const [tweaks, setTweaks] = useState<Tweaks>(TWEAK_DEFAULTS);
+  // --- tweaks (UI chrome) — persisted so accent/density/developer-mode stick ---
+  const [tweaks, setTweaks] = useState<Tweaks>(loadTweaks);
   const setTweak = useCallback(
     <K extends keyof Tweaks>(k: K, v: Tweaks[K]) => setTweaks((p) => ({ ...p, [k]: v })),
     [],
   );
+  useEffect(() => {
+    rememberTweaks(tweaks);
+  }, [tweaks]);
   useEffect(() => {
     const root = document.documentElement;
     const ac = ACCENTS[tweaks.accent] ?? ACCENTS.blue;
@@ -594,6 +598,7 @@ function AppInner({
         stats={state.stats}
         status={state.status}
         sandbox={isHost ? sandbox : "guest"}
+        devMode={tweaks.developerMode}
         onPalette={() => setPaletteOpen(true)}
         onSwitchSandbox={() => isHost && setWantSwitch(true)}
         roomSlot={
@@ -635,7 +640,7 @@ function AppInner({
             disabledReason={composerDisabledReason}
           />
         </main>
-        {tweaks.showEvents && (
+        {tweaks.developerMode && tweaks.showEvents && (
           <Inspector
             stats={state.stats}
             queue={queue}

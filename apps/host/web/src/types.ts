@@ -143,6 +143,12 @@ export interface Tweaks {
   uiScale: number;
   monoEverywhere: boolean;
   showEvents: boolean;
+  /**
+   * Master switch for developer-only UI (the RPC inspector, debug panels,
+   * raw status). Off by default so end-users never see internal tooling;
+   * toggled from the command palette.
+   */
+  developerMode: boolean;
 }
 
 export const TWEAK_DEFAULTS: Tweaks = {
@@ -151,6 +157,7 @@ export const TWEAK_DEFAULTS: Tweaks = {
   uiScale: 100,
   monoEverywhere: false,
   showEvents: true,
+  developerMode: false,
 };
 
 export const ACCENTS: Record<Tweaks["accent"], { a: string; bg: string }> = {

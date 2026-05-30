@@ -11,6 +11,8 @@ export interface TitleBarProps {
   stats: State["stats"];
   status: RpcStatus;
   sandbox: string;
+  /** When true, render developer-only chrome (DEV badge + raw RPC status). */
+  devMode?: boolean;
   onPalette: () => void;
   onSwitchSandbox: () => void;
   /** Multiplayer controls (roster + room join/leave) rendered on the right. */
@@ -24,6 +26,7 @@ export function TitleBar({
   stats,
   status,
   sandbox,
+  devMode = false,
   onPalette,
   onSwitchSandbox,
   roomSlot,
@@ -43,6 +46,20 @@ export function TitleBar({
         <span className="titlename">{session?.title ?? "untitled session"}</span>
       </div>
       <div className="titleright">
+        {devMode && (
+          <span
+            className="titlepill mono"
+            title="Developer mode is on (⌘K → developer mode)"
+            data-testid="titlebar-devmode"
+            style={{
+              color: "var(--accent)",
+              borderColor: "var(--accent)",
+              letterSpacing: "0.08em",
+            }}
+          >
+            ⚙ DEV
+          </span>
+        )}
         {roomSlot}
         <button
           className="titlepill mono"
@@ -73,20 +90,22 @@ export function TitleBar({
         </span>
         <span className="titlepill mono">{pct}% ctx</span>
         <span className="titlepill mono">${stats.cost.toFixed(2)}</span>
-        <span
-          className="titlepill mono"
-          style={{
-            color:
-              status === "open"
-                ? "var(--green)"
-                : status === "error"
-                  ? "var(--red)"
-                  : "var(--tx-faint)",
-          }}
-          data-testid="titlebar-status"
-        >
-          {status}
-        </span>
+        {devMode && (
+          <span
+            className="titlepill mono"
+            style={{
+              color:
+                status === "open"
+                  ? "var(--green)"
+                  : status === "error"
+                    ? "var(--red)"
+                    : "var(--tx-faint)",
+            }}
+            data-testid="titlebar-status"
+          >
+            {status}
+          </span>
+        )}
       </div>
     </div>
   );

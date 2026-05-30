@@ -125,16 +125,33 @@ export function buildPaletteItems(ctx: PaletteContext): PaletteItem[] {
   );
   add(
     "Appearance",
-    (ctx.tweaks.showEvents ? "Hide" : "Show") + " RPC inspector",
-    () => ctx.setTweak("showEvents", !ctx.tweaks.showEvents),
-    { glyph: "▦" },
-  );
-  add(
-    "Appearance",
     ctx.tweaks.monoEverywhere ? "Disable mono-everywhere" : "Enable mono-everywhere",
     () => ctx.setTweak("monoEverywhere", !ctx.tweaks.monoEverywhere),
     { glyph: "M" },
   );
+
+  // Developer mode: master switch for internal/debug UI. The end-user only
+  // ever sees the single toggle below; everything it gates stays hidden until
+  // it's on.
+  add(
+    "Developer",
+    (ctx.tweaks.developerMode ? "Disable" : "Enable") + " developer mode",
+    () => {
+      const next = !ctx.tweaks.developerMode;
+      ctx.setTweak("developerMode", next);
+      ctx.toast(`Developer mode ${next ? "on" : "off"}`, "⚙", next ? "ok" : "warn");
+    },
+    { glyph: "⚙", hint: "Show/hide internal debug UI" },
+  );
+  // Sub-controls only make sense — and only appear — while dev mode is on.
+  if (ctx.tweaks.developerMode) {
+    add(
+      "Developer",
+      (ctx.tweaks.showEvents ? "Hide" : "Show") + " RPC inspector",
+      () => ctx.setTweak("showEvents", !ctx.tweaks.showEvents),
+      { glyph: "▦" },
+    );
+  }
 
   ctx.commands.forEach((c) =>
     add("Slash command", "/" + c.name, () => ctx.runSlash(c), {
