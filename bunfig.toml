@@ -1,0 +1,7 @@
+[install]
+# Use a single hoisted node_modules at the workspace root.
+linker = "hoisted"
+
+[test]
+# Pick up *.test.ts anywhere under packages/.
+root = "./packages"

@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+/* shadcn-style design tokens (dark theme by default). Tailwind v4 reads these
+   via the @theme inline mapping below so utilities like bg-background work. */
+:root {
+  --background: oklch(0.21 0.006 285.885);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.25 0.006 285.885);
+  --card-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.62 0.19 259.81);
+  --primary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.27 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.62 0.19 259.81);
+  --destructive: oklch(0.62 0.21 22.5);
+  --accent: oklch(0.3 0.006 286.033);
+  --accent-foreground: oklch(0.985 0 0);
+  --radius: 0.625rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}

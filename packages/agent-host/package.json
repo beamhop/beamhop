@@ -1,0 +1,16 @@
+{
+  "name": "@beamhop/agent-host",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@beamhop/bridge": "workspace:*",
+    "@beamhop/store": "workspace:*",
+    "@opencode-ai/sdk": "1.15.13"
+  }
+}
