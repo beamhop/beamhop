@@ -6,6 +6,7 @@ import {
   sessionRef,
   sessionsRef,
   toSessionNode,
+  touchCollection,
 } from "./schema.ts";
 import type { SessionNode, SessionStatus, Unsubscribe } from "./types.ts";
 
@@ -58,6 +59,15 @@ export function makeSessions(gun: GunRef, room: string) {
 
     tombstone(sessionId: string): void {
       sessionRef(gun, room, sessionId).put({ id: sessionId, deleted: true, updatedAt: clock() });
+    },
+
+    /**
+     * Keep the `<room> -> sessions` parent edge hot in relays so fresh browser
+     * peers can pull the set (see `touchCollection`). Host calls this on a
+     * heartbeat alongside `publishMeta`/`publishModels`.
+     */
+    touch(): void {
+      touchCollection(sessionsRef(gun, room));
     },
   };
 }

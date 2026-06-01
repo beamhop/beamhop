@@ -1,6 +1,8 @@
 import { Send, Square } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button.tsx";
+import { Textarea } from "@/components/ui/textarea.tsx";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip.tsx";
 import { useSessionStatus } from "@/hooks/use-session-status.ts";
 import { useSelectedModel } from "@/lib/model-context.tsx";
 import { useStore } from "@/lib/store-context.tsx";
@@ -35,9 +37,9 @@ export function PromptComposer({ sessionId }: { sessionId: string }) {
   };
 
   return (
-    <div className="border-t p-3">
+    <div className="border-t bg-background p-3">
       <div className="flex items-end gap-2">
-        <textarea
+        <Textarea
           data-testid="prompt-input"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -52,22 +54,32 @@ export function PromptComposer({ sessionId }: { sessionId: string }) {
           placeholder={
             busy ? "Agent is responding…" : "Message the agent…  (Enter to send, Shift+Enter for newline)"
           }
-          className="flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          className="max-h-40 min-h-[2.75rem] flex-1 resize-none"
         />
         {busy ? (
-          <Button
-            data-testid="stop-prompt-button"
-            size="icon"
-            variant="destructive"
-            onClick={stop}
-            title="Stop"
-          >
-            <Square className="h-4 w-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                data-testid="stop-prompt-button"
+                size="icon"
+                variant="destructive"
+                onClick={stop}
+                aria-label="Stop"
+              >
+                <Square className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Stop</TooltipContent>
+          </Tooltip>
         ) : (
-          <Button data-testid="send-prompt-button" size="icon" onClick={send} title="Send">
-            <Send className="h-4 w-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button data-testid="send-prompt-button" size="icon" onClick={send} aria-label="Send">
+                <Send className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Send</TooltipContent>
+          </Tooltip>
         )}
       </div>
     </div>

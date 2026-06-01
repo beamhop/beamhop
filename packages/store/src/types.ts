@@ -21,6 +21,19 @@ export interface ModelCatalog {
   defaultModelID: string | null;
 }
 
+/**
+ * Room metadata, published by the active host. `heartbeatAt` doubles as a
+ * liveness lease: a host refreshes it every heartbeat, so a starting host can
+ * tell whether another host is still alive (recent `heartbeatAt`) and stand
+ * down instead of double-driving the room. See the bridge's lease check.
+ */
+export interface RoomMeta {
+  hostId: string;
+  /** Monotonic clock of the most recent meta publish (liveness signal). */
+  heartbeatAt: number;
+  schemaVersion: number;
+}
+
 export interface SessionNode {
   id: string;
   title: string;

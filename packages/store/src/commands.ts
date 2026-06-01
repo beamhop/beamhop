@@ -1,7 +1,7 @@
 import type { GunRef } from "./gun-ref.ts";
 import { subscribeCollection } from "./collection.ts";
 import { clock, ulid } from "./ids.ts";
-import { commandRef, commandsRef, isNode, toCommandNode } from "./schema.ts";
+import { commandRef, commandsRef, isNode, toCommandNode, touchCollection } from "./schema.ts";
 import type { CommandKind, CommandNode, Unsubscribe } from "./types.ts";
 
 export interface EnqueueArgs {
@@ -83,6 +83,15 @@ export function makeCommands(gun: GunRef, room: string, selfId: string) {
             commandRef(gun, room, key).put(null);
           }
         });
+    },
+
+    /**
+     * Keep the `<room> -> commands` parent edge hot in relays so a fresh
+     * browser guest's first enqueue lands in a set the host is already watching
+     * (see `touchCollection`). Host calls this on a heartbeat.
+     */
+    touch(): void {
+      touchCollection(commandsRef(gun, room));
     },
   };
 }

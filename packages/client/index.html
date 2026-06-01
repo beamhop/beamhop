@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>beamhop</title>
+    <script>
+      // Apply the persisted theme before paint to avoid a flash. Defaults to
+      // dark (the class already on <html>); only flips to light if stored.
+      try {
+        if (localStorage.getItem("beamhop-theme") === "light") {
+          document.documentElement.classList.remove("dark");
+        }
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,5 +1,6 @@
 import type { PartNode } from "@beamhop/store";
 import { ChevronRight, Wrench } from "lucide-react";
+import { Badge } from "@/components/ui/badge.tsx";
 
 /** Renders a single message part by type: text, tool call, or a generic fallback. */
 export function PartRenderer({ part }: { part: PartNode }) {
@@ -23,20 +24,21 @@ export function PartRenderer({ part }: { part: PartNode }) {
       /* ignore */
     }
     return (
-      <div
+      <Badge
+        variant="secondary"
         data-testid={`part-tool-${part.id}`}
-        className="flex items-center gap-2 rounded-md border bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground"
+        className="max-w-full gap-1.5 rounded-md py-1 font-normal"
       >
-        <Wrench className="h-3.5 w-3.5" />
+        <Wrench className="size-3.5 shrink-0" />
         <span className="font-medium">{toolName}</span>
         {part.status && (
           <>
-            <ChevronRight className="h-3 w-3" />
+            <ChevronRight className="size-3 shrink-0 opacity-60" />
             <span>{part.status}</span>
           </>
         )}
         {part.text && <span className="truncate">— {part.text}</span>}
-      </div>
+      </Badge>
     );
   }
 

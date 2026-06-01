@@ -12,12 +12,14 @@
 // scalars, so HAM last-write-wins merges sibling records independently.
 
 import type { GunRef } from "./gun-ref.ts";
+import { clock } from "./ids.ts";
 import type {
   CommandNode,
   CommandStatus,
   MessageNode,
   MessageRole,
   PartNode,
+  RoomMeta,
   SessionNode,
   SessionStatus,
 } from "./types.ts";
@@ -73,6 +75,29 @@ export function commandRef(gun: GunRef, room: string, commandId: string): GunRef
   return commandsRef(gun, room).get(commandId);
 }
 
+/**
+ * Re-assert a collection's parent edge (`<room> -> <collection>`) so it stays
+ * "hot" in a relay's in-memory graph.
+ *
+ * Why this is needed: a collection set node (e.g. `<room>/sessions`) is only
+ * linked from its parent the moment a child is first written. If no child has
+ * been written for a while, that parent edge lives only in the relay's radisk,
+ * not its memory. A *browser* peer joining fresh then issues a property-scoped
+ * get (`{ "#": "<room>", ".": "sessions" }`) which the relay answers from
+ * memory with the parent node stripped of the edge — so the guest believes the
+ * collection is empty and never traverses into it. (Node/Bun peers recover by
+ * also issuing a direct soul get; the browser build does not.) Single nodes
+ * like `meta`/`models` don't hit this because the host re-`put`s them on a
+ * heartbeat, keeping their edges hot — this does the same for set nodes.
+ *
+ * The write targets the set node's OWN soul (a `_touchedAt` scalar), not a
+ * child, so it re-links the parent edge without adding a collection member:
+ * `subscribeCollection` ignores it (no `id` field => `isNode` is false).
+ */
+export function touchCollection(setRef: GunRef): void {
+  setRef.put({ _touchedAt: clock() });
+}
+
 // ---- coercion: Gun node data (loose, may include the `_` metadata) -> typed ----
 
 const SESSION_STATUSES: SessionStatus[] = ["idle", "busy", "error"];
@@ -94,6 +119,22 @@ function strOrNull(v: unknown): string | null {
 /** A Gun node is valid only if it has our `id` field; nulls/partials are skipped. */
 export function isNode(data: unknown): data is Record<string, unknown> {
   return !!data && typeof data === "object" && typeof (data as any).id === "string";
+}
+
+/**
+ * Coerce a raw `meta` node to `RoomMeta`, or null if absent/unpublished.
+ * `heartbeatAt` falls back to the legacy `createdAt` field so meta written by a
+ * pre-lease host is still treated as a (one-shot) liveness signal.
+ */
+export function toRoomMeta(data: unknown): RoomMeta | null {
+  if (!data || typeof data !== "object") return null;
+  const d = data as Record<string, unknown>;
+  if (typeof d.hostId !== "string" || d.hostId.length === 0) return null;
+  return {
+    hostId: d.hostId,
+    heartbeatAt: num(d.heartbeatAt) || num(d.createdAt),
+    schemaVersion: num(d.schemaVersion),
+  };
 }
 
 export function toSessionNode(data: Record<string, unknown>): SessionNode {

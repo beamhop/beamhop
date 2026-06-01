@@ -1,0 +1,204 @@
+# beamhop — data transport & persistence
+#
+# How state moves across the layers and where it is durably persisted.
+# Render:  d2 docs/transport.d2 docs/transport.svg
+#
+# The whole system shares ONE logical data model: a GunDB graph, namespaced per
+# room. Every layer holds a replica of that graph; they reconcile over GunDB's
+# wire protocol carried on WebSockets. Guests never call OpenCode directly —
+# they enqueue commands into the graph; the single host consumes them and
+# mirrors results back into the graph, which syncs to every guest.
+
+direction: right
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+  }
+}
+
+# ----------------------------------------------------------------------------
+# GUEST (browser) — the only layer users touch
+# ----------------------------------------------------------------------------
+guest: Guest — browser SPA {
+  tooltip: One per browser tab. Relay-backed: keeps only an in-memory graph.
+  style.fill: "#eef6ff"
+
+  ui: React UI {
+    explanation: |md
+      `@beamhop/client`
+      - session list, composer, model picker
+      - reads via live subscriptions
+      - writes by enqueuing commands
+    |
+  }
+
+  store: "@beamhop/store (Gun replica)" {
+    explanation: |md
+      In-memory GunDB graph.
+      **No radisk / no Gun localStorage** —
+      writes must reach the relay, so the
+      browser graph is intentionally ephemeral.
+    |
+    style.fill: "#dbeafe"
+  }
+
+  ls: "localStorage (prefs only)" {
+    explanation: |md
+      Tiny per-tab/browser prefs, **not** app data:
+      - `beamhop-guest-id` (stable identity)
+      - `beamhop-theme`
+      - `beamhop-model` (last picked model)
+    |
+    shape: cylinder
+    style.fill: "#fde68a"
+  }
+
+  ui -> store: subscribe / enqueue
+  ui -> ls: read + write prefs {style.stroke-dash: 3}
+}
+
+# ----------------------------------------------------------------------------
+# RELAY — dumb store-and-forward GunDB peer
+# ----------------------------------------------------------------------------
+relay: Relay {
+  tooltip: "Bun.serve native WS bridged into Gun's mesh (axe:false), not Gun web mode."
+  style.fill: "#f0fdf4"
+
+  mesh: "Gun mesh (Bun.serve /gun)" {
+    explanation: |md
+      `@beamhop/relay`
+      - native WebSocket → `mesh.hi/hear/bye`
+      - outbox buffers frames (backpressure)
+      - answers `get` from its own store
+    |
+  }
+
+  radata: "radisk ./radata" {
+    explanation: durable on-disk copy of every room's graph
+    shape: cylinder
+    style.fill: "#fed7aa"
+  }
+
+  mesh -> radata: persist (radisk)
+}
+
+# ----------------------------------------------------------------------------
+# HOST — one process per room; owns the OpenCode server
+# ----------------------------------------------------------------------------
+host: Host — agent-host {
+  tooltip: One host per room. Single-host invariant makes command claims uncontended.
+  style.fill: "#faf5ff"
+
+  hstore: "@beamhop/store (Gun replica)" {
+    explanation: |md
+      Host's GunDB graph replica.
+      Persists to radisk so room state
+      survives host restarts.
+    |
+    style.fill: "#e9d5ff"
+  }
+
+  hradata: "radisk ./radata-host" {
+    shape: cylinder
+    style.fill: "#fed7aa"
+  }
+
+  bridge: "@beamhop/bridge (sync engine)" {
+    explanation: |md
+      Binds the Gun graph ⇄ OpenCode.
+      Idempotent, field-ownership writes.
+    |
+    style.fill: "#f3e8ff"
+
+    outbound: outbound {
+      explanation: |md
+        **command queue → OpenCode**
+        - exactly-once: `seen` guard +
+          `status` gate + single-host claim
+        - per-session FIFO for prompts
+        - acks command with result
+      |
+    }
+    inbound: inbound {
+      explanation: |md
+        **OpenCode events → graph**
+        - sessions / messages / parts
+        - coalesces streamed parts
+          (≤1 write / 100 ms)
+      |
+    }
+    reconcile: "reconcile + models (startup/heartbeat)" {
+      explanation: backfill existing sessions; (re)publish meta + model catalog every 15 s
+    }
+  }
+
+  hstore -> hradata: persist (radisk)
+}
+
+# ----------------------------------------------------------------------------
+# OPENCODE / pi — the actual agent runtime
+# ----------------------------------------------------------------------------
+oc: OpenCode server {
+  tooltip: Local HTTP server spawned by the host (free port); SDK client talks to it.
+  style.fill: "#fff7ed"
+
+  api: "OpenCode SDK (HTTP, localhost)" {
+    explanation: |md
+      `@opencode-ai/sdk`
+      - `session.create / prompt / abort / delete`
+      - emits an event stream
+    |
+  }
+  models: "models (pi / providers)" {
+    explanation: deepseek · ollama · zai · openrouter · …
+    shape: person
+  }
+  api -> models: run turn
+  models -> api: stream tokens {style.stroke-dash: 3}
+}
+
+# ============================================================================
+# TRANSPORT EDGES (the wire) — GunDB graph sync over WebSocket
+# ============================================================================
+guest.store <-> relay.mesh: {
+  label: "GunDB sync over WebSocket\n(VITE_RELAY_URL /gun)"
+  style.stroke: "#2563eb"
+  style.stroke-width: 3
+}
+host.hstore <-> relay.mesh: {
+  label: "GunDB sync over WebSocket\n(RELAY_URL /gun)"
+  style.stroke: "#2563eb"
+  style.stroke-width: 3
+}
+
+# Bridge taps the host's graph replica in both directions.
+host.bridge.outbound <- host.hstore: "read pending commands" {style.stroke: "#7c3aed"}
+host.bridge.inbound -> host.hstore: "write sessions/messages/parts" {style.stroke: "#7c3aed"}
+host.bridge.reconcile -> host.hstore: "publish meta/models, backfill" {style.stroke: "#7c3aed"; style.stroke-dash: 3}
+
+# Bridge ⇄ OpenCode (the only non-Gun hop).
+host.bridge.outbound -> oc.api: "session.create / prompt / abort / delete" {style.stroke: "#ea580c"}
+oc.api -> host.bridge.inbound: "event stream (message.part.updated, session.idle, …)" {style.stroke: "#ea580c"; style.stroke-dash: 3}
+
+# ============================================================================
+# THE SHARED DATA MODEL (what actually flows on the blue wires)
+# ============================================================================
+graph: "Per-room GunDB graph (what flows on the blue wires; what radisk persists)" {
+  near: bottom-center
+  style.fill: "#f8fafc"
+  style.stroke-dash: 2
+  grid-columns: 1
+
+  room: "room/" {
+    style.fill: "#ffffff"
+    meta: "meta — hostId, schemaVersion (LWW single node)"
+    models: "models — catalog JSON (LWW single node)"
+    commands: "commands/{id} — queue: pending → claimed → done|error"
+    sessions: "sessions/{id} — status idle|busy|error" {
+      messages: "messages/{id} — role user|assistant" {
+        parts: "parts/{id} — streamed content (text, tool, …)"
+      }
+    }
+  }
+}

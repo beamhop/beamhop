@@ -15,6 +15,7 @@ export type {
   ModelCatalog,
   ModelOption,
   PartNode,
+  RoomMeta,
   SendPromptPayload,
   SessionNode,
   SessionStatus,

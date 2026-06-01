@@ -27,8 +27,19 @@ export function createOutboundState(): OutboundState {
 }
 
 function unwrap<T>(res: SdkResult<T>): T {
-  if (res.error) throw new Error(typeof res.error === "string" ? res.error : JSON.stringify(res.error));
+  if (res.error) throw new Error(errorMessage(res.error));
   return res.data as T;
+}
+
+/** Pull a human-readable message out of an OpenCode SDK error ({name,data:{message}}). */
+function errorMessage(err: unknown): string {
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object") {
+    const e = err as { name?: string; data?: { message?: string }; message?: string };
+    const msg = e.data?.message ?? e.message;
+    if (msg) return e.name ? `${e.name}: ${msg}` : msg;
+  }
+  return JSON.stringify(err);
 }
 
 /** Serialize work onto a per-session chain so same-session commands don't interleave. */
@@ -144,6 +155,18 @@ export function handleCommand(
       store.commands.ack(command.id, {
         error: err instanceof Error ? err.message : String(err),
       });
+      // A failed turn (model error, session-not-found, …) otherwise leaves the
+      // session stuck "busy" — the composer stays disabled and any assistant
+      // stub OpenCode created hangs with the streaming cursor forever. Mark the
+      // session "error" so the UI unlocks and can surface the failure. A later
+      // session.idle/successful turn overwrites this back to idle/busy.
+      if (command.sessionId) {
+        try {
+          store.sessions.setStatus(command.sessionId, "error");
+        } catch {
+          /* best-effort; the ack above already recorded the error */
+        }
+      }
     }
   };
 

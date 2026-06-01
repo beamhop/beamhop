@@ -1,3 +1,10 @@
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select.tsx";
 import { modelKey, useSelectedModel } from "@/lib/model-context.tsx";
 
 /** Header dropdown to choose which model prompts are sent with. */
@@ -13,20 +20,23 @@ export function ModelPicker() {
   }
 
   return (
-    <select
-      data-testid="model-picker"
+    <Select
       value={selected ? modelKey(selected) : ""}
-      onChange={(e) => {
-        const m = models.find((x) => modelKey(x) === e.target.value);
+      onValueChange={(v) => {
+        const m = models.find((x) => modelKey(x) === v);
         if (m) select(m);
       }}
-      className="h-8 rounded-md border border-input bg-card px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      {models.map((m) => (
-        <option key={modelKey(m)} value={modelKey(m)} data-testid={`model-option-${modelKey(m)}`}>
-          {m.label}
-        </option>
-      ))}
-    </select>
+      <SelectTrigger data-testid="model-picker" size="sm" className="w-[200px] text-xs">
+        <SelectValue placeholder="Select model" />
+      </SelectTrigger>
+      <SelectContent>
+        {models.map((m) => (
+          <SelectItem key={modelKey(m)} value={modelKey(m)} data-testid={`model-option-${modelKey(m)}`}>
+            {m.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

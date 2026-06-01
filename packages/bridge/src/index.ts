@@ -32,23 +32,39 @@ export function createBridge(config: BridgeConfig): Bridge {
   let stopOutbound: (() => void) | null = null;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
 
+  // Re-assert the collection parent edges so they stay hot in the relay's
+  // in-memory graph. A cold edge makes a fresh *browser* guest receive an empty
+  // parent node for its property-scoped get and never traverse into the set —
+  // i.e. existing sessions don't sync. See `touchCollection` in the store.
+  const warmCollections = () => {
+    store.sessions.touch();
+    store.commands.touch();
+  };
+
   return {
     async start() {
-      // Publish room meta + the available-model catalog + backfill state first.
+      // Publish room meta + the available-model catalog + backfill state first,
+      // and warm the collection edges so the very first guest can pull them.
       store.publishMeta(hostId);
       await publishModels(client, store, { onError });
+      warmCollections();
       await reconcile(client, store, inboundState, { onError });
       // Then go live in both directions.
       stopInbound = startInbound(client, store, inboundState, { onError });
       stopOutbound = startOutbound(client, store, hostId, outboundState, { onError });
 
-      // Re-publish meta + the model catalog on a heartbeat. A single startup
-      // `.put()` can race the relay connection and be lost; re-publishing makes
-      // it self-heal and ensures guests who join later (after the host) still
-      // receive the catalog. Idempotent (LWW on a single node).
+      // Heartbeat. A single startup `.put()` can race the relay connection and
+      // be lost; re-publishing makes it self-heal and ensures guests who join
+      // later (after the host) still receive everything. All idempotent.
+      //  - meta + model catalog: LWW single nodes.
+      //  - collection edges (sessions/commands): re-asserted so they stay hot
+      //    in the relay's memory. meta/models never hit the cold-edge bug
+      //    precisely because they're re-published here; this extends the same
+      //    protection to set nodes.
       heartbeat = setInterval(() => {
         store.publishMeta(hostId);
         void publishModels(client, store, { onError });
+        warmCollections();
       }, 15_000);
     },
     stop() {
