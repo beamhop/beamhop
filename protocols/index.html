@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Beamhop — Implementation Protocols</title>
+<meta name="description" content="The Beamhop Implementation Protocols: 22 specifications for a sovereign, private, peer-to-peer network." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" defer></script>
+<style>
+  :root{
+    --bg:#000000;
+    --surface:#0a0a0a;
+    --surface-2:#141414;
+    --ink:#ededed;
+    --white:#ffffff;
+    --muted:#a1a1a1;
+    --faint:#6e6e6e;
+    --border:#262626;
+    --border-2:#3a3a3a;
+    --line-soft:rgba(255,255,255,0.07);
+    --grad:linear-gradient(180deg,#ffffff,#7a7a7a);
+    --maxw:1180px;
+    --ease:cubic-bezier(.22,.61,.36,1);
+    --radius:10px;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Geist","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    font-weight:400;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  a{color:inherit;text-decoration:none}
+  ::selection{background:#fff;color:#000}
+  .mono{font-family:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace}
+  .grad-text{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+
+  /* ---------- mark + wordmark ---------- */
+  .mark{width:28px;height:28px;flex:none}
+  .wordmark{font-weight:600;font-size:20px;letter-spacing:-.03em}
+  .wordmark .b{color:#fff}
+  .wordmark .h{color:#7e7e7e}
+
+  /* ---------- top banner ---------- */
+  .topbar{
+    display:flex;align-items:center;justify-content:center;
+    padding:9px 20px;background:#000;border-bottom:1px solid var(--border);
+    position:relative;z-index:55;
+  }
+  .eu-pill{
+    display:inline-flex;align-items:center;gap:9px;
+    font-size:12.5px;font-weight:450;letter-spacing:.01em;color:var(--ink);
+    border:1px solid var(--border);border-radius:999px;
+    padding:5px 14px 5px 12px;background:var(--surface);
+    transition:border-color .25s var(--ease),background .25s var(--ease);
+  }
+  .eu-pill:hover{border-color:var(--border-2);background:var(--surface-2)}
+  .eumark{flex:none}
+
+  /* ---------- nav ---------- */
+  .nav{
+    position:sticky;top:0;z-index:60;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:15px 28px;
+    background:rgba(0,0,0,.72);
+    backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--border);
+    transition:padding .3s var(--ease),background .3s var(--ease);
+  }
+  .nav.scrolled{background:rgba(0,0,0,.9);padding:11px 28px}
+  .nav-l{display:flex;align-items:center;gap:11px}
+  .nav-r{display:flex;align-items:center;gap:30px}
+  .nav-r a{font-size:14px;color:var(--muted);transition:color .2s}
+  .nav-r a:hover{color:var(--ink)}
+  .btn{
+    font-family:inherit;font-size:14px;font-weight:500;
+    padding:8px 16px;border-radius:8px;cursor:pointer;border:1px solid var(--border);
+    background:transparent;color:var(--ink);transition:all .2s var(--ease);
+  }
+  .btn:hover{border-color:var(--border-2);background:rgba(255,255,255,.04)}
+  .btn-solid{border:1px solid #fff;background:#fff;color:#000;font-weight:500}
+  .btn-solid:hover{background:#e6e6e6;border-color:#e6e6e6;transform:translateY(-1px)}
+  .menu-toggle{display:none}
+
+  /* ---------- hero ---------- */
+  .hero{position:relative;min-height:calc(100vh - 110px);display:flex;align-items:center;overflow:hidden;border-bottom:1px solid var(--border)}
+  .hero-grid{
+    position:absolute;inset:0;z-index:0;pointer-events:none;
+    background-image:
+      linear-gradient(rgba(255,255,255,.028) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(255,255,255,.028) 1px,transparent 1px);
+    background-size:52px 52px;
+    -webkit-mask-image:radial-gradient(ellipse 75% 60% at 50% 38%,#000 25%,transparent 78%);
+    mask-image:radial-gradient(ellipse 75% 60% at 50% 38%,#000 25%,transparent 78%);
+  }
+  .hero-glow{
+    position:absolute;top:-12%;left:55%;transform:translateX(-50%);
+    width:920px;height:520px;z-index:0;pointer-events:none;
+    background:radial-gradient(ellipse at center,rgba(255,255,255,.07),transparent 68%);
+  }
+  .hero-net{position:absolute;inset:0;width:100%;height:100%;z-index:1}
+  .hero-net svg{width:100%;height:100%;display:block}
+  .hero-veil{
+    position:absolute;inset:0;z-index:2;pointer-events:none;
+    background:
+      radial-gradient(120% 95% at 16% 44%, rgba(0,0,0,.94) 0%, rgba(0,0,0,.6) 40%, rgba(0,0,0,0) 72%),
+      linear-gradient(180deg, rgba(0,0,0,.5) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 68%, var(--bg) 100%);
+  }
+  .hero-inner{position:relative;z-index:3;width:100%;padding-top:44px;padding-bottom:54px}
+  .eyebrow{
+    font-size:12px;letter-spacing:.22em;color:var(--muted);font-weight:500;
+    display:inline-flex;align-items:center;gap:10px;margin-bottom:26px;text-transform:uppercase;
+  }
+  .eyebrow::before{content:"";width:24px;height:1px;background:var(--border-2)}
+  .hero h1{
+    font-size:clamp(2.6rem,6.4vw,5rem);font-weight:600;line-height:1.02;
+    letter-spacing:-.045em;margin-bottom:24px;max-width:14ch;color:#fff;
+  }
+  .hero p.lead{font-size:clamp(1.02rem,1.5vw,1.2rem);color:var(--muted);max-width:50ch;margin-bottom:34px;line-height:1.6}
+  .hero-cta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:38px}
+  .hero-cta .btn{padding:12px 22px;font-size:15px;border-radius:9px}
+  .chips-row{display:flex;gap:10px;flex-wrap:wrap}
+  .chip-static{
+    font-size:12.5px;color:var(--muted);border:1px solid var(--border);
+    border-radius:999px;padding:7px 14px;display:inline-flex;align-items:center;gap:8px;
+    background:var(--surface);
+  }
+  .chip-static .dot{width:6px;height:6px;border-radius:50%;background:#fff}
+  .chip-static:nth-child(2) .dot{background:#8a8a8a}
+  .chip-static:nth-child(3) .dot{background:linear-gradient(#fff,#7a7a7a)}
+
+  /* ---------- principles ---------- */
+  .principles{padding:108px 0 96px;position:relative}
+  .sec-head{margin-bottom:54px;max-width:62ch}
+  .sec-head .eyebrow{margin-bottom:18px}
+  .sec-head h2{font-size:clamp(1.9rem,3.6vw,2.7rem);font-weight:600;letter-spacing:-.035em;line-height:1.08;color:#fff}
+  .sec-head p{color:var(--muted);margin-top:16px;font-size:1.04rem;max-width:58ch;line-height:1.6}
+  .prin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .prin{
+    border:1px solid var(--border);border-radius:14px;padding:30px 28px 32px;
+    background:var(--surface);
+    transition:transform .35s var(--ease),border-color .35s var(--ease),background .35s var(--ease);
+  }
+  .prin:hover{transform:translateY(-4px);border-color:var(--border-2);background:var(--surface-2)}
+  .prin-ico{width:44px;height:44px;border-radius:11px;display:grid;place-items:center;
+    background:rgba(255,255,255,.04);border:1px solid var(--border);margin-bottom:22px}
+  .prin h3{font-size:1.26rem;font-weight:600;letter-spacing:-.02em;margin-bottom:12px;color:#fafafa}
+  .prin p{color:var(--muted);font-size:.97rem;line-height:1.62}
+
+  /* ---------- stats ---------- */
+  .stats{border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--surface)}
+  .stats-grid{display:grid;grid-template-columns:repeat(4,1fr)}
+  .stat{padding:44px 30px;text-align:left;border-left:1px solid var(--border)}
+  .stat:first-child{border-left:none}
+  .stat .num{font-size:clamp(2.4rem,4.5vw,3.4rem);font-weight:600;letter-spacing:-.05em;line-height:1;color:#fff}
+  .stat .lab{color:var(--muted);font-size:.86rem;margin-top:12px;letter-spacing:.01em}
+
+  /* ---------- suite ---------- */
+  .suite{padding:104px 0 110px}
+  .toolbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:30px}
+  .search{position:relative;flex:1;min-width:230px}
+  .search svg{position:absolute;left:15px;top:50%;transform:translateY(-50%);opacity:.55}
+  .search input{
+    width:100%;background:var(--surface);border:1px solid var(--border);color:var(--ink);
+    font-family:inherit;font-size:15px;padding:12px 16px 12px 44px;border-radius:9px;outline:none;
+    transition:border-color .2s,box-shadow .2s,background .2s;
+  }
+  .search input::placeholder{color:var(--faint)}
+  .search input:focus{border-color:#5a5a5a;background:var(--surface-2);box-shadow:0 0 0 3px rgba(255,255,255,.06)}
+  .chips{display:flex;gap:9px;flex-wrap:wrap}
+  .fchip{
+    font-family:"Geist Mono",ui-monospace,monospace;font-size:12px;letter-spacing:.01em;
+    padding:9px 14px;border-radius:8px;cursor:pointer;
+    border:1px solid var(--border);background:transparent;color:var(--muted);
+    transition:all .18s var(--ease);white-space:nowrap;
+  }
+  .fchip:hover{color:var(--ink);border-color:var(--border-2)}
+  .fchip.active{background:#fff;color:#000;border-color:#fff;font-weight:600}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+  .card{
+    position:relative;text-align:left;cursor:pointer;
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:22px 22px 24px;font-family:inherit;color:inherit;
+    transition:transform .28s var(--ease),border-color .28s var(--ease),background .28s var(--ease);
+    overflow:hidden;
+  }
+  .card::before{
+    content:"";position:absolute;left:0;right:0;top:0;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
+    opacity:0;transition:opacity .3s var(--ease);
+  }
+  .card:hover{transform:translateY(-4px);border-color:var(--border-2);background:var(--surface-2)}
+  .card:hover::before{opacity:1}
+  .card:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+  .card-code{font-family:"Geist Mono",ui-monospace,monospace;font-size:13px;font-weight:600;color:#fff;letter-spacing:.01em}
+  .status{display:inline-flex;align-items:center;gap:7px;font-family:"Geist Mono",ui-monospace,monospace;font-size:10.5px;
+    letter-spacing:.08em;color:var(--faint);text-transform:uppercase}
+  .status .sdot{width:6px;height:6px;border-radius:50%;background:#ededed}
+  .status.optional .sdot{background:transparent;border:1px solid #6e6e6e}
+  .card h4{font-size:1.14rem;font-weight:600;letter-spacing:-.02em;margin-bottom:9px;line-height:1.2;color:#fafafa}
+  .card .tag{font-size:.94rem;color:var(--muted);line-height:1.5}
+  .card .dom{margin-top:18px;font-family:"Geist Mono",ui-monospace,monospace;font-size:11px;letter-spacing:.05em;color:var(--faint);text-transform:uppercase}
+  .noresults{padding:60px 10px;text-align:center;color:var(--muted);grid-column:1/-1}
+  .noresults .mono{color:var(--faint);font-size:13px;margin-top:8px}
+
+  /* ---------- drawer ---------- */
+  .overlay{
+    position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.7);
+    backdrop-filter:blur(3px);opacity:0;visibility:hidden;transition:opacity .3s var(--ease),visibility .3s;
+  }
+  .overlay.open{opacity:1;visibility:visible}
+  .drawer{
+    position:fixed;top:0;right:0;bottom:0;z-index:90;width:min(480px,100%);
+    background:var(--surface);border-left:1px solid var(--border);
+    transform:translateX(102%);transition:transform .42s var(--ease);
+    display:flex;flex-direction:column;
+  }
+  .drawer.open{transform:translateX(0)}
+  .drawer-bar{height:2px;background:#fff}
+  .drawer-scroll{overflow-y:auto;padding:34px 34px 44px}
+  .drawer-close{
+    position:absolute;top:20px;right:24px;width:36px;height:36px;border-radius:9px;
+    border:1px solid var(--border);background:rgba(0,0,0,.4);color:var(--ink);cursor:pointer;
+    display:grid;place-items:center;transition:all .2s;z-index:2;
+  }
+  .drawer-close:hover{border-color:var(--border-2);background:rgba(255,255,255,.06)}
+  .d-code{font-family:"Geist Mono",ui-monospace,monospace;font-size:15px;font-weight:600;color:#fff;letter-spacing:.02em}
+  .d-status{margin:18px 0 4px}
+  .d-status .status{font-size:11px}
+  .d-title{font-size:1.9rem;font-weight:600;letter-spacing:-.035em;line-height:1.1;margin:14px 0 6px;color:#fff}
+  .d-tagline{color:var(--muted);font-size:1.04rem;margin-bottom:26px}
+  .d-domain{display:inline-block;font-family:"Geist Mono",ui-monospace,monospace;font-size:11px;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:5px 12px;margin-bottom:28px}
+  .d-label{font-family:"Geist Mono",ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:11px}
+  .d-what{font-size:1rem;color:#c7c7c7;line-height:1.68;margin-bottom:30px}
+  .d-powers{
+    border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:28px;background:var(--surface-2);
+  }
+  .d-powers .d-label{margin-bottom:8px}
+  .d-powers p{font-size:1rem;color:var(--ink);line-height:1.55}
+  .d-tags{display:flex;gap:8px;flex-wrap:wrap}
+  .d-tag{font-family:"Geist Mono",ui-monospace,monospace;font-size:11.5px;color:var(--muted);border:1px solid var(--border);
+    border-radius:7px;padding:6px 11px;background:rgba(255,255,255,.02)}
+  .d-note{margin-top:26px;font-size:.86rem;color:var(--faint);line-height:1.5;border-top:1px solid var(--border);padding-top:18px}
+
+  /* ---------- footer ---------- */
+  footer{border-top:1px solid var(--border);padding:64px 0 40px;background:var(--surface)}
+  .foot-top{display:flex;justify-content:space-between;gap:40px;flex-wrap:wrap;margin-bottom:48px}
+  .foot-brand{max-width:34ch}
+  .foot-brand .wordmark{font-size:23px;display:inline-block;margin-bottom:14px}
+  .foot-brand p{color:var(--muted);font-size:.97rem;line-height:1.6}
+  .foot-cols{display:flex;gap:64px;flex-wrap:wrap}
+  .foot-col h5{font-family:"Geist Mono",ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:16px}
+  .foot-col a{display:block;color:var(--muted);font-size:.94rem;margin-bottom:11px;transition:color .2s}
+  .foot-col a:hover{color:var(--ink)}
+  .foot-bot{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;
+    border-top:1px solid var(--border);padding-top:26px;color:var(--faint);font-size:.85rem}
+  .foot-bot .eu{display:inline-flex;align-items:center;gap:8px}
+
+  .reveal{opacity:0;transform:translateY(22px)}
+
+  /* ---------- responsive ---------- */
+  @media(max-width:900px){
+    .prin-grid{grid-template-columns:1fr;gap:14px}
+    .stats-grid{grid-template-columns:repeat(2,1fr)}
+    .stat:nth-child(3){border-left:none}
+    .stat{border-top:1px solid var(--border)}
+    .stat:nth-child(-n+2){border-top:none}
+    .nav-r .navlink{display:none}
+  }
+  @media(max-width:560px){
+    .wrap{padding:0 20px}
+    .nav{padding:14px 20px}
+    .stats-grid{grid-template-columns:1fr}
+    .stat{border-left:none;border-top:1px solid var(--border)}
+    .stat:first-child{border-top:none}
+    .drawer-scroll{padding:30px 24px 40px}
+    .hero h1{max-width:100%}
+  }
+
+  @media(prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    *{animation-duration:.001ms!important;transition-duration:.001ms!important}
+    .reveal{opacity:1;transform:none}
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP BANNER -->
+<div class="topbar">
+  <span class="eu-pill">
+    <svg class="eumark" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="11" fill="#0a0a0a" stroke="#3a3a3a" stroke-width="1"/>
+      <g fill="#ededed">
+        <circle cx="12" cy="4.4" r=".85"/><circle cx="12" cy="19.6" r=".85"/>
+        <circle cx="4.4" cy="12" r=".85"/><circle cx="19.6" cy="12" r=".85"/>
+        <circle cx="6.9" cy="6.9" r=".85"/><circle cx="17.1" cy="6.9" r=".85"/>
+        <circle cx="6.9" cy="17.1" r=".85"/><circle cx="17.1" cy="17.1" r=".85"/>
+        <circle cx="9" cy="5.1" r=".85"/><circle cx="15" cy="5.1" r=".85"/>
+        <circle cx="9" cy="18.9" r=".85"/><circle cx="15" cy="18.9" r=".85"/>
+      </g>
+    </svg>
+    Built in the European Union
+  </span>
+</div>
+
+<!-- NAV -->
+<nav class="nav" id="nav">
+  <div class="nav-l">
+    <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <defs><linearGradient id="mg" x1="0" y1="0" x2="32" y2="32">
+        <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#6e6e6e"/></linearGradient></defs>
+      <circle cx="7" cy="22" r="4.4" fill="#fafafa"/>
+      <circle cx="25" cy="10" r="4.4" fill="#8a8a8a"/>
+      <path d="M9.5 19.5 C 14 11, 19 11, 22.5 12.5" stroke="url(#mg)" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+    </svg>
+    <span class="wordmark"><span class="b">beam</span><span class="h">hop</span></span>
+  </div>
+  <div class="nav-r">
+    <a href="#principles" class="navlink">Principles</a>
+    <a href="#suite" class="navlink">Protocols</a>
+    <button class="btn btn-solid" onclick="document.getElementById('suite').scrollIntoView()">Run a node</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-grid" aria-hidden="true"></div>
+  <div class="hero-glow" aria-hidden="true"></div>
+  <div class="hero-net" id="net" aria-hidden="true"></div>
+  <div class="hero-veil"></div>
+  <div class="hero-inner">
+    <div class="wrap">
+      <span class="eyebrow mono">Beamhop Implementation Protocols</span>
+      <h1>Private by protocol.<br><span class="grad-text">Sovereign</span> by design.</h1>
+      <p class="lead">Beamhop is a peer-to-peer network where every message is end-to-end encryptable, every identity is a key you hold, and no central server sits between you and the people you talk to. These are the 22 protocols that make it work.</p>
+      <div class="hero-cta">
+        <button class="btn btn-solid" onclick="document.getElementById('suite').scrollIntoView()">Explore the protocols</button>
+        <button class="btn" onclick="document.getElementById('principles').scrollIntoView()">Why it's different</button>
+      </div>
+      <div class="chips-row">
+        <span class="chip-static"><span class="dot"></span>EU-sovereign</span>
+        <span class="chip-static"><span class="dot"></span>End-to-end encrypted</span>
+        <span class="chip-static"><span class="dot"></span>No central servers</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- PRINCIPLES -->
+<section class="principles" id="principles">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow mono">The stance</span>
+      <h2>Built on three commitments we don't compromise.</h2>
+      <p>Most networks ask you to trust a company with your conversations and your identity. Beamhop is engineered so you don't have to.</p>
+    </div>
+    <div class="prin-grid">
+      <div class="prin reveal">
+        <div class="prin-ico">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ededed" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+        </div>
+        <h3>European sovereignty</h3>
+        <p>Your data lives on infrastructure you choose, under the jurisdiction you choose. No foreign platform owns the pipes — anyone can run a node, from a laptop in Almere to a rack in Frankfurt.</p>
+      </div>
+      <div class="prin reveal">
+        <div class="prin-ico">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ededed" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <h3>Data privacy</h3>
+        <p>Messages are encrypted to their recipients and wrapped so even the nodes carrying them can't see who's talking or what's said. Privacy is the default state, not a setting you have to find.</p>
+      </div>
+      <div class="prin reveal">
+        <div class="prin-ico">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ededed" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg>
+        </div>
+        <h3>Security by design</h3>
+        <p>Every event is signed with keys that never leave your device and verified independently by every peer. There's no trusted middleman holding the master copy — so there's no master copy to breach.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<section class="stats">
+  <div class="wrap">
+    <div class="stats-grid">
+      <div class="stat"><div class="num" data-count="22">0</div><div class="lab">Protocols specified</div></div>
+      <div class="stat"><div class="num" data-count="7">0</div><div class="lab">Capability domains</div></div>
+      <div class="stat"><div class="num" data-count="15">0</div><div class="lab">Enabled on every node</div></div>
+      <div class="stat"><div class="num" data-count="0">0</div><div class="lab">Central servers required</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- SUITE -->
+<section class="suite" id="suite">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow mono">The suite</span>
+      <h2>22 protocols. Seven domains. One sovereign network.</h2>
+      <p>Each Beamhop Implementation Protocol (BIP) specifies a single capability — from the signed-event core to off-grid Bluetooth transport. Search, filter, and open any spec to see exactly what it does and where it runs in Beamhop.</p>
+    </div>
+
+    <div class="toolbar reveal">
+      <div class="search">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="search" type="text" placeholder="Search protocols — try “encrypted”, “sync”, “GDPR”…" aria-label="Search protocols" />
+      </div>
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap">
+    <div class="foot-top">
+      <div class="foot-brand">
+        <span class="wordmark"><span class="b">beam</span><span class="h">hop</span></span>
+        <p>Private by protocol. Sovereign by design. A peer-to-peer network for people who'd rather hold their own keys.</p>
+      </div>
+      <div class="foot-cols">
+        <div class="foot-col">
+          <h5>Protocol</h5>
+          <a href="#suite">The suite</a>
+          <a href="#suite">Core protocols</a>
+          <a href="#suite">Extensions</a>
+        </div>
+        <div class="foot-col">
+          <h5>Network</h5>
+          <a href="#suite">Run a node</a>
+          <a href="#principles">Sovereignty</a>
+          <a href="#principles">Privacy model</a>
+        </div>
+      </div>
+    </div>
+    <div class="foot-bot">
+      <span>© 2026 Beamhop</span>
+      <span class="eu">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#0a0a0a" stroke="#3a3a3a" stroke-width="1"/><g fill="#ededed"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="7.2" cy="7.2" r="1"/><circle cx="16.8" cy="7.2" r="1"/><circle cx="7.2" cy="16.8" r="1"/><circle cx="16.8" cy="16.8" r="1"/></g></svg>
+        Built in the European Union
+      </span>
+    </div>
+  </div>
+</footer>
+
+<!-- DRAWER -->
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="d-title">
+  <div class="drawer-bar"></div>
+  <button class="drawer-close" id="drawerClose" aria-label="Close">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  </button>
+  <div class="drawer-scroll" id="drawerBody"></div>
+</aside>
+
+<script>
+/* ----------------------------- DATA ----------------------------- */
+const DOMAINS = ["Foundation","Identity & Access","Private Messaging","Data Sovereignty","Discovery","Governance & Ops","Extended"];
+
+const BIPS = [
+  {code:"BIP-01", name:"Beam Core", domain:"Foundation", status:"Core",
+   tagline:"The signed-event substrate every node speaks.",
+   what:"Defines Beamhop's wire format — self-authenticating events signed with secp256k1 Schnorr keys — plus the subscription and filter model nodes use to exchange them. Every message in the network is a signed event that any peer can verify independently, with no trusted middleman.",
+   powers:"The entire Beamhop network. Every post, message, and sync travels as a Beam Core event.",
+   tags:["Schnorr","secp256k1","Subscriptions"]},
+
+  {code:"BIP-02", name:"Node Capability Descriptor", domain:"Foundation", status:"Core",
+   tagline:"How a node tells you what it can do.",
+   what:"A machine-readable document each node publishes describing the protocols it speaks, its limits, and its operator. Clients read it before connecting, so they negotiate capabilities up front instead of guessing what a node supports.",
+   powers:"Node discovery in Beamhop — apps inspect a node's descriptor before opening a connection.",
+   tags:["Capability negotiation","Discovery"]},
+
+  {code:"BIP-03", name:"Completeness Signaling", domain:"Foundation", status:"Core",
+   tagline:"Know when you've received everything.",
+   what:"Extends history sync so a node can confirm it has delivered every stored event matching a query, not just a capped batch. Removes the guesswork that silently drops data when a node's internal limit is lower than the client expects.",
+   powers:"Reliable history loading in Beamhop — no missing messages when you scroll back.",
+   tags:["Sync","Pagination"]},
+
+  {code:"BIP-04", name:"Delta Reconciliation", domain:"Foundation", status:"Core",
+   tagline:"Sync only what's actually different.",
+   what:"A range-based set-reconciliation method that lets two nodes efficiently work out which events each one lacks and exchange only the difference. Keeps sync fast and bandwidth-minimal even across very large histories.",
+   powers:"Peer-to-peer sync between Beamhop nodes and fast catch-up after a device reconnects.",
+   tags:["Set reconciliation","Bandwidth"]},
+
+  {code:"BIP-05", name:"Node Authentication", domain:"Identity & Access", status:"Core",
+   tagline:"Prove who you are before you read.",
+   what:"A challenge–response handshake where a client signs a one-time challenge to prove control of its key. Lets a node gate private content to authenticated members without ever handling a password.",
+   powers:"Access control for private Beamhop spaces and member-only data.",
+   tags:["Challenge–response","Access control"]},
+
+  {code:"BIP-06", name:"Signed Request Authorization", domain:"Identity & Access", status:"Core",
+   tagline:"Passwordless authorization for every request.",
+   what:"Authorizes HTTP-layer actions with a short-lived signed token instead of an API key or bearer secret. The signature proves the request came from the key holder and can't be replayed by anyone who intercepts it.",
+   powers:"Beamhop's management API and authenticated uploads — no shared secrets to leak.",
+   tags:["Signed tokens","No API keys"]},
+
+  {code:"BIP-07", name:"Delegated Signing Authority", domain:"Identity & Access", status:"Optional",
+   tagline:"Let a device or agent sign on your behalf.",
+   what:"Issues a scoped, revocable token that authorizes a subkey — a second device or an automated agent — to sign on behalf of your identity without ever exposing your root key. The authority is bounded and can be withdrawn at any time.",
+   powers:"Multi-device sign-in, and Beamhop agents acting under your identity with limited rights.",
+   tags:["Delegation","Revocable","Subkeys"]},
+
+  {code:"BIP-08", name:"Sealed Direct Messages", domain:"Private Messaging", status:"Core",
+   tagline:"One-to-one conversations only the two of you can read.",
+   what:"End-to-end encrypted private messaging between two identities. Contents are encrypted to the recipient, so no node — not even the one storing the message — can read what's inside.",
+   powers:"Private chat in Beamhop.",
+   tags:["End-to-end","Direct messages"]},
+
+  {code:"BIP-09", name:"Metadata-Blind Envelopes", domain:"Private Messaging", status:"Core",
+   tagline:"Hide who's talking to whom.",
+   what:"Wraps each private message in an outer encrypted envelope that conceals the sender, the recipient, and the message type from any node that handles it. Even the traffic metadata stays private — not just the contents.",
+   powers:"Network-wide metadata privacy — nodes relay messages they're unable to profile.",
+   tags:["Metadata privacy","Sealed envelopes"]},
+
+  {code:"BIP-10", name:"Forward-Secret Group Channels", domain:"Private Messaging", status:"Optional",
+   tagline:"Group encryption with rotating keys.",
+   what:"Brings Messaging-Layer-Security-style group encryption to Beamhop, with keys that rotate as members join and leave. Compromising one key can't unlock past or future messages — giving forward secrecy and post-compromise security.",
+   powers:"Secure Beamhop team channels and group spaces.",
+   tags:["MLS-style","Forward secrecy","Groups"]},
+
+  {code:"BIP-11", name:"Revocation Requests", domain:"Data Sovereignty", status:"Core",
+   tagline:"Retract what you've published.",
+   what:"Lets an author request deletion of their own events; nodes honor it with event and address tombstones so the content stops being served. You stay in control of what remains online under your name.",
+   powers:"The delete action in Beamhop — retract a message or post across the network.",
+   tags:["Tombstones","Author-controlled"]},
+
+  {code:"BIP-12", name:"Ephemeral Expiry", domain:"Data Sovereignty", status:"Core",
+   tagline:"Data with a built-in expiry date.",
+   what:"Attaches an expiration timestamp to an event. Once it passes, nodes reject the event and stop returning it in queries — so the data self-destructs without any manual cleanup.",
+   powers:"Disappearing messages and time-boxed data in Beamhop.",
+   tags:["Expiry","Self-destruct"]},
+
+  {code:"BIP-13", name:"Right to Vanish", domain:"Data Sovereignty", status:"Core",
+   tagline:"Erase everything, on request.",
+   what:"A network-wide erasure request that sets a hard cutoff, after which a node removes all of an identity's stored data. A direct, machine-enforceable implementation of the right to be forgotten.",
+   powers:"GDPR-grade account erasure across Beamhop nodes.",
+   tags:["Right to be forgotten","GDPR"]},
+
+  {code:"BIP-14", name:"Author-Locked Publishing", domain:"Data Sovereignty", status:"Core",
+   tagline:"Only the author can publish it.",
+   what:"Marks an event so a node will accept it only directly from its author, rejecting relayed or rebroadcast copies from anyone else. Prevents impersonation and unauthorized redistribution of your content.",
+   powers:"Tamper-resistant posting in Beamhop — your content can't be replayed by others.",
+   tags:["Anti-impersonation","Author-locked"]},
+
+  {code:"BIP-15", name:"Content Search", domain:"Discovery", status:"Core",
+   tagline:"Find anything in your history.",
+   what:"A search capability over content and tags, so clients can ask a node for matching events. Lets people locate past messages and posts without scanning everything on the device.",
+   powers:"Search across your Beamhop messages and spaces.",
+   tags:["Full-text","Tags"]},
+
+  {code:"BIP-16", name:"Aggregate Counts", domain:"Discovery", status:"Core",
+   tagline:"Counts without exposing the data.",
+   what:"Returns exact or estimated counts for a query — using cardinality sketches for large sets — so clients can show totals without downloading every matching event. Surfaces the numbers while keeping payloads small.",
+   powers:"Unread badges and space metrics in Beamhop.",
+   tags:["Cardinality sketch","Counts"]},
+
+  {code:"BIP-17", name:"Moderated Spaces", domain:"Governance & Ops", status:"Optional",
+   tagline:"Communities with real moderators.",
+   what:"Defines community spaces with designated moderators who can curate what appears. Membership and moderation are expressed as signed events, so governance is transparent and portable across nodes.",
+   powers:"Moderated group spaces and communities in Beamhop.",
+   tags:["Moderation","Communities"]},
+
+  {code:"BIP-18", name:"Node Administration", domain:"Governance & Ops", status:"Core",
+   tagline:"Run your own node, your way.",
+   what:"A JSON-RPC management interface, authorized by signed requests, that lets an operator administer their node — allow/deny rules, capability toggles, and maintenance. Sovereignty means running infrastructure you actually control.",
+   powers:"The Beamhop node admin panel and operator tooling.",
+   tags:["JSON-RPC","Operator"]},
+
+  {code:"BIP-19", name:"Proof-of-Work Admission", domain:"Governance & Ops", status:"Optional",
+   tagline:"Spam resistance without gatekeepers.",
+   what:"Requires events to carry a small computational stamp, making bulk spam and sybil flooding expensive while staying effectively free for normal use. Keeps a node clean without a central authority deciding who's allowed in.",
+   powers:"Optional spam protection for public Beamhop nodes.",
+   tags:["Proof of work","Anti-spam"]},
+
+  {code:"BIP-20", name:"Offline Mesh Transport", domain:"Extended", status:"Optional",
+   tagline:"Keep working with no internet at all.",
+   what:"Carries Beamhop events directly between nearby devices over Bluetooth Low Energy, with no servers or connectivity required. The network keeps moving device-to-device, even fully off-grid.",
+   powers:"Off-grid, local-first messaging in Beamhop — resilient to outages and shutdowns.",
+   tags:["Bluetooth LE","Off-grid","Local-first"]},
+
+  {code:"BIP-21", name:"Native Commerce", domain:"Extended", status:"Optional",
+   tagline:"Marketplaces built into the protocol.",
+   what:"Primitives for merchants, listings, and checkout expressed as signed events, so commerce runs natively over the network rather than through a central platform. Sellers own their storefront and their customer relationships.",
+   powers:"In-network marketplaces and peer-to-peer commerce on Beamhop.",
+   tags:["Merchants","Checkout"]},
+
+  {code:"BIP-22", name:"Verifiable Game State", domain:"Extended", status:"Optional",
+   tagline:"Turn-based state you can prove.",
+   what:"A structured, signed encoding for turn-based game state, so every move is verifiable and the full record can be reconstructed by any peer. A demonstration of Beamhop carrying rich, rule-bound application state.",
+   powers:"Verifiable turn-based games built on Beamhop.",
+   tags:["Turn-based","Verifiable state"]},
+];
+
+/* ----------------------------- CATALOG RENDER ----------------------------- */
+const grid = document.getElementById('grid');
+const chipsEl = document.getElementById('chips');
+const searchEl = document.getElementById('search');
+let activeDomain = "All";
+let query = "";
+
+["All", ...DOMAINS].forEach(d=>{
+  const b = document.createElement('button');
+  b.className = 'fchip' + (d==="All" ? ' active':'');
+  b.textContent = d;
+  b.onclick = ()=>{ activeDomain = d; [...chipsEl.children].forEach(c=>c.classList.remove('active')); b.classList.add('active'); render(); };
+  chipsEl.appendChild(b);
+});
+
+function matches(b){
+  const inDom = activeDomain==="All" || b.domain===activeDomain;
+  if(!inDom) return false;
+  if(!query) return true;
+  const hay = (b.code+" "+b.name+" "+b.tagline+" "+b.what+" "+b.domain+" "+b.tags.join(" ")).toLowerCase();
+  return hay.includes(query);
+}
+
+function render(){
+  const list = BIPS.filter(matches);
+  grid.innerHTML = "";
+  if(list.length===0){
+    grid.innerHTML = '<div class="noresults">No protocols match that.<div class="mono">Try clearing the search or another domain.</div></div>';
+    return;
+  }
+  list.forEach(b=>{
+    const card = document.createElement('button');
+    card.className = 'card';
+    card.setAttribute('aria-label', b.code + ' ' + b.name);
+    card.innerHTML = `
+      <div class="card-top">
+        <span class="card-code">${b.code}</span>
+        <span class="status ${b.status==='Optional'?'optional':''}"><span class="sdot"></span>${b.status}</span>
+      </div>
+      <h4>${b.name}</h4>
+      <div class="tag">${b.tagline}</div>
+      <div class="dom">${b.domain}</div>`;
+    card.onclick = ()=>openDrawer(b);
+    grid.appendChild(card);
+  });
+}
+
+searchEl.addEventListener('input', e=>{ query = e.target.value.trim().toLowerCase(); render(); });
+render();
+
+/* ----------------------------- DRAWER ----------------------------- */
+const overlay = document.getElementById('overlay');
+const drawer = document.getElementById('drawer');
+const drawerBody = document.getElementById('drawerBody');
+const drawerClose = document.getElementById('drawerClose');
+let lastFocus = null;
+
+function openDrawer(b){
+  lastFocus = document.activeElement;
+  const note = b.status==='Core'
+    ? 'Core protocol — enabled on every Beamhop node by default.'
+    : 'Optional protocol — available as an opt-in capability operators can enable.';
+  drawerBody.innerHTML = `
+    <span class="d-code">${b.code}</span>
+    <div class="d-status"><span class="status ${b.status==='Optional'?'optional':''}"><span class="sdot"></span>${b.status}</span></div>
+    <h2 class="d-title" id="d-title">${b.name}</h2>
+    <p class="d-tagline">${b.tagline}</p>
+    <span class="d-domain">${b.domain}</span>
+    <div class="d-label">What it does</div>
+    <p class="d-what">${b.what}</p>
+    <div class="d-powers">
+      <div class="d-label">Powers in Beamhop</div>
+      <p>${b.powers}</p>
+    </div>
+    <div class="d-label">Concepts</div>
+    <div class="d-tags">${b.tags.map(t=>`<span class="d-tag">${t}</span>`).join('')}</div>
+    <p class="d-note">${note}</p>`;
+  overlay.classList.add('open');
+  drawer.classList.add('open');
+  document.body.style.overflow='hidden';
+  drawerClose.focus();
+}
+function closeDrawer(){
+  overlay.classList.remove('open');
+  drawer.classList.remove('open');
+  document.body.style.overflow='';
+  if(lastFocus) lastFocus.focus();
+}
+overlay.addEventListener('click', closeDrawer);
+drawerClose.addEventListener('click', closeDrawer);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && drawer.classList.contains('open')) closeDrawer(); });
+
+/* ----------------------------- NAV SCROLL ----------------------------- */
+const nav = document.getElementById('nav');
+window.addEventListener('scroll', ()=>{ nav.classList.toggle('scrolled', window.scrollY>20); }, {passive:true});
+
+/* ----------------------------- HERO NETWORK ----------------------------- */
+const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+(function buildNetwork(){
+  const host = document.getElementById('net');
+  const W=1200, H=820;
+  const svgNS="http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS,'svg');
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.setAttribute('preserveAspectRatio','xMidYMid slice');
+
+  const defs = document.createElementNS(svgNS,'defs');
+  defs.innerHTML = `
+    <linearGradient id="beamline" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#555555"/>
+    </linearGradient>
+    <radialGradient id="nodeglow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".4"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="2.2"/></filter>`;
+  svg.appendChild(defs);
+
+  const nodes = [
+    {x:215,y:560},{x:120,y:330},{x:330,y:250},{x:470,y:430},{x:300,y:650},
+    {x:560,y:610},{x:640,y:300},{x:780,y:180},{x:720,y:470},{x:900,y:560},
+    {x:960,y:330},{x:1080,y:230},{x:1040,y:470},{x:880,y:120},{x:470,y:150},
+    {x:160,y:680},{x:1110,y:610}
+  ];
+  const edges = [
+    [0,1],[1,2],[2,3],[3,0],[0,4],[4,5],[3,5],[5,6],[6,3],[2,14],[14,7],
+    [6,7],[6,8],[8,5],[8,9],[9,10],[10,11],[11,12],[12,9],[10,13],[13,7],
+    [11,16],[16,12],[0,15],[15,4],[8,6],[3,6]
+  ];
+
+  const g = document.createElementNS(svgNS,'g');
+  g.setAttribute('opacity','0.7');
+  svg.appendChild(g);
+
+  edges.forEach(([a,b])=>{
+    const l = document.createElementNS(svgNS,'line');
+    l.setAttribute('x1',nodes[a].x); l.setAttribute('y1',nodes[a].y);
+    l.setAttribute('x2',nodes[b].x); l.setAttribute('y2',nodes[b].y);
+    l.setAttribute('stroke','url(#beamline)');
+    l.setAttribute('stroke-width','1');
+    l.setAttribute('stroke-opacity','0.14');
+    g.appendChild(l);
+  });
+
+  nodes.forEach((n,i)=>{
+    const glow = document.createElementNS(svgNS,'circle');
+    glow.setAttribute('cx',n.x); glow.setAttribute('cy',n.y); glow.setAttribute('r','22');
+    glow.setAttribute('fill','url(#nodeglow)');
+    g.appendChild(glow);
+
+    const ring = document.createElementNS(svgNS,'circle');
+    ring.setAttribute('cx',n.x); ring.setAttribute('cy',n.y); ring.setAttribute('r','5');
+    ring.setAttribute('fill','none');
+    ring.setAttribute('stroke', i%2 ? '#8a8a8a' : '#ffffff');
+    ring.setAttribute('stroke-width','1.4'); ring.setAttribute('opacity','0');
+    ring.classList.add('pulse-ring');
+    g.appendChild(ring);
+
+    const c = document.createElementNS(svgNS,'circle');
+    c.setAttribute('cx',n.x); c.setAttribute('cy',n.y); c.setAttribute('r','3.4');
+    c.setAttribute('fill', i%2 ? '#8a8a8a' : '#fafafa');
+    g.appendChild(c);
+  });
+
+  host.appendChild(svg);
+
+  function animate(){
+    if(typeof gsap==='undefined' || reduced) return;
+
+    const beamEdges = edges.filter((_,i)=> i%2===0).slice(0,11);
+    beamEdges.forEach((e,i)=>{
+      let [a,b] = e;
+      if(i%3===0){ [a,b]=[b,a]; }
+      const p = document.createElementNS(svgNS,'circle');
+      p.setAttribute('r','2.6');
+      p.setAttribute('fill', i%2 ? '#ffffff' : '#9a9a9a');
+      p.setAttribute('filter','url(#soft)');
+      g.appendChild(p);
+      gsap.fromTo(p,
+        {attr:{cx:nodes[a].x, cy:nodes[a].y}},
+        {attr:{cx:nodes[b].x, cy:nodes[b].y},
+         duration: 1.6 + Math.random()*1.8, ease:'none',
+         repeat:-1, repeatDelay: 0.3 + Math.random()*1.6,
+         delay: Math.random()*2.4});
+      gsap.to(p,{keyframes:{opacity:[0,0.95,0.95,0]},
+         duration: 1.6 + Math.random()*1.8, ease:'none',
+         repeat:-1, repeatDelay: 0.3 + Math.random()*1.6,
+         delay: Math.random()*2.4});
+    });
+
+    gsap.utils.toArray('.pulse-ring').forEach((ring)=>{
+      gsap.fromTo(ring,
+        {attr:{r:4}, opacity:0.6},
+        {attr:{r:17}, opacity:0, duration:2.6, ease:'sine.out',
+         repeat:-1, delay: Math.random()*4, repeatDelay: 1.5+Math.random()*3});
+    });
+
+    gsap.to(g,{rotation:1.2, transformOrigin:'50% 50%', duration:22, yoyo:true, repeat:-1, ease:'sine.inOut'});
+    gsap.fromTo(g,{opacity:0},{opacity:0.7, duration:1.6, ease:'power2.out'});
+  }
+
+  if(typeof gsap!=='undefined'){ animate(); }
+  else { window.addEventListener('load', animate); }
+})();
+
+/* ----------------------------- SCROLL REVEALS + COUNTERS ----------------------------- */
+function initScroll(){
+  if(typeof gsap==='undefined' || typeof ScrollTrigger==='undefined' || reduced){
+    document.querySelectorAll('.reveal').forEach(el=>{el.style.opacity=1;el.style.transform='none';});
+    document.querySelectorAll('[data-count]').forEach(el=>{el.textContent = el.dataset.count;});
+    return;
+  }
+  gsap.registerPlugin(ScrollTrigger);
+
+  gsap.utils.toArray('.reveal').forEach(el=>{
+    gsap.to(el,{opacity:1,y:0,duration:.8,ease:'power3.out',
+      scrollTrigger:{trigger:el,start:'top 86%'}});
+  });
+
+  document.querySelectorAll('[data-count]').forEach(el=>{
+    const target = +el.dataset.count;
+    const obj = {v:0};
+    ScrollTrigger.create({trigger:el,start:'top 90%',once:true,onEnter:()=>{
+      gsap.to(obj,{v:target,duration:1.4,ease:'power2.out',
+        onUpdate:()=>{ el.textContent = Math.round(obj.v); }});
+    }});
+  });
+}
+if(typeof gsap!=='undefined'){ initScroll(); }
+else { window.addEventListener('load', initScroll); }
+</script>
+</body>
+</html>
