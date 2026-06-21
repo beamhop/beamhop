@@ -33,8 +33,8 @@ export default function Nav() {
           <span className="status-dot" aria-hidden="true" />
           Network online
         </span>
-        <a className="btn btn-primary" href="#start">
-          Spin up an agent
+        <a className="btn btn-primary" href="https://app.beamhop.com">
+          Join the network
           <ArrowIcon aria-hidden="true" />
         </a>
       </div>
