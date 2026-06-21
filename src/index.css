@@ -5,43 +5,42 @@
    ============================================================ */
 
 :root {
-  /* --- Surfaces (dark, violet-biased) --- */
-  --void: oklch(13% 0.035 292);      /* near-black violet base */
-  --void-deep: oklch(10% 0.03 292);  /* deepest pockets / footer */
-  --field: oklch(17.5% 0.045 290);   /* deep ionosphere surface */
-  --panel: oklch(22% 0.05 288);      /* raised operational surface */
-  --panel-hi: oklch(27% 0.055 287);  /* hovered / active surface */
-  --line: oklch(33% 0.045 290);      /* quiet violet divider */
-  --line-bright: oklch(45% 0.07 292);
+  /* --- Surfaces (true black base, neutral grays — Vercel-style) --- */
+  --void: oklch(0% 0 0);             /* #000 page base */
+  --void-deep: oklch(0% 0 0);        /* deepest pockets / footer */
+  --field: oklch(13% 0 0);           /* raised surface (~#1f1f1f) */
+  --panel: oklch(17% 0 0);           /* raised card surface */
+  --panel-hi: oklch(22% 0 0);        /* hovered / active surface */
+  --line: oklch(27% 0 0);            /* hairline border (~#333) */
+  --line-bright: oklch(36% 0 0);
 
-  /* --- Beam material (gradients only; never text) --- */
-  --beam-1: oklch(64% 0.215 292);    /* electric violet */
-  --beam-1-bright: oklch(72% 0.2 292);
-  --beam-2: oklch(67% 0.27 350);     /* hot magenta */
-  --beam-2-bright: oklch(74% 0.24 350);
+  /* --- Accent material is now a neutral silver sheen (never text color) --- */
+  --beam-1: oklch(78% 0 0);
+  --beam-1-bright: oklch(92% 0 0);
+  --beam-2: oklch(62% 0 0);
+  --beam-2-bright: oklch(82% 0 0);
 
-  /* --- Live signal (amber, reserved for live/active/scheduled) --- */
-  --carrier: oklch(82% 0.155 78);
-  --carrier-deep: oklch(72% 0.16 65);
+  /* --- Live signal: white in monochrome (reserved for live/active) --- */
+  --carrier: oklch(98% 0 0);
+  --carrier-deep: oklch(82% 0 0);
 
   /* --- Ink --- */
-  --text: oklch(96% 0.012 290);      /* high-contrast off-white */
-  --text-soft: oklch(86% 0.02 290);  /* primary body on dark */
-  --muted: oklch(74% 0.03 288);      /* secondary lavender gray */
-  --faint: oklch(60% 0.03 288);      /* tertiary / fine print */
+  --text: oklch(99% 0 0);            /* near-white */
+  --text-soft: oklch(87% 0 0);       /* primary body on black */
+  --muted: oklch(64% 0 0);           /* secondary gray (~#999) */
+  --faint: oklch(46% 0 0);           /* tertiary / fine print (~#6b6b6b) */
 
-  /* --- Beam gradients as materials --- */
-  --beam-grad: linear-gradient(110deg, var(--beam-1) 0%, var(--beam-2) 100%);
+  /* --- Gradients as materials (monochrome) --- */
+  --beam-grad: linear-gradient(110deg, oklch(96% 0 0) 0%, oklch(72% 0 0) 100%);
   --beam-grad-soft: linear-gradient(
     110deg,
-    oklch(64% 0.215 292 / 0.16) 0%,
-    oklch(67% 0.27 350 / 0.16) 100%
+    oklch(100% 0 0 / 0.14) 0%,
+    oklch(100% 0 0 / 0.05) 100%
   );
 
   /* --- Type --- */
-  --font-display: "Chivo", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-body: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system,
-    sans-serif;
+  --font-display: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-body: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", "Cascadia Mono", monospace;
 
   /* --- Fluid spacing --- */
@@ -87,23 +86,23 @@ body {
   font-size: clamp(1rem, 0.97rem + 0.18vw, 1.0625rem);
   line-height: 1.6;
   overflow-x: hidden;
-  /* ambient field glow baked into the body so sections sit in light */
+  /* faint monochrome glow so the black sits with a little depth, not flat */
   background-image:
     radial-gradient(
       120% 80% at 78% -10%,
-      oklch(64% 0.215 292 / 0.16) 0%,
+      oklch(100% 0 0 / 0.05) 0%,
       transparent 55%
     ),
     radial-gradient(
       90% 60% at 8% 8%,
-      oklch(67% 0.27 350 / 0.1) 0%,
+      oklch(100% 0 0 / 0.025) 0%,
       transparent 50%
     );
   background-attachment: fixed;
 }
 
 ::selection {
-  background: oklch(67% 0.27 350 / 0.32);
+  background: oklch(100% 0 0 / 0.2);
   color: var(--text);
 }
 
@@ -205,7 +204,7 @@ a {
 /* ---------- Buttons ---------- */
 
 .btn {
-  --btn-bg: var(--panel);
+  --btn-bg: transparent;
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
@@ -243,15 +242,16 @@ a {
 
 .btn-primary {
   border: 1px solid transparent;
-  background: var(--beam-grad);
-  color: oklch(14% 0.04 300); /* dark ink on bright beam = AA on large/bold */
-  font-weight: 700;
-  box-shadow: 0 10px 30px -12px oklch(67% 0.27 350 / 0.7);
+  background: oklch(100% 0 0); /* solid white — Vercel primary */
+  color: oklch(0% 0 0); /* black ink on white = AAA */
+  font-weight: 600;
+  box-shadow: none;
 }
 
 .btn-primary:hover {
   border-color: transparent;
-  box-shadow: 0 14px 38px -10px oklch(67% 0.27 350 / 0.85);
+  background: oklch(86% 0 0); /* slight dim on hover */
+  box-shadow: none;
 }
 
 .btn-arrow {

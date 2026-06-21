@@ -88,8 +88,8 @@ export const Logo = (p: SVGProps<SVGSVGElement>) => (
   >
     <defs>
       <linearGradient id="bh-g" x1="0" y1="0" x2="24" y2="24">
-        <stop offset="0" stopColor="oklch(64% 0.215 292)" />
-        <stop offset="1" stopColor="oklch(67% 0.27 350)" />
+        <stop offset="0" stopColor="oklch(64% 0 0)" />
+        <stop offset="1" stopColor="oklch(67% 0 0)" />
       </linearGradient>
     </defs>
     <circle cx="5" cy="12" r="2.6" fill="url(#bh-g)" />

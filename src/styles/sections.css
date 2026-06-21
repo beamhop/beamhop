@@ -18,7 +18,7 @@
 }
 
 .nav.is-stuck {
-  background: oklch(11% 0.03 292 / 0.72);
+  background: oklch(11% 0 0 / 0.72);
   backdrop-filter: blur(14px) saturate(1.3);
   border-bottom-color: var(--line);
 }
@@ -73,7 +73,7 @@
   padding: 0.4rem 0.7rem;
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  background: oklch(17% 0.04 290 / 0.6);
+  background: oklch(17% 0 0 / 0.6);
 }
 
 .status-dot {
@@ -81,17 +81,17 @@
   height: 7px;
   border-radius: 50%;
   background: var(--carrier);
-  box-shadow: 0 0 0 0 oklch(82% 0.155 78 / 0.7);
+  box-shadow: 0 0 0 0 oklch(82% 0 0 / 0.7);
   animation: ping 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 
 @keyframes ping {
   0% {
-    box-shadow: 0 0 0 0 oklch(82% 0.155 78 / 0.6);
+    box-shadow: 0 0 0 0 oklch(82% 0 0 / 0.6);
   }
   70%,
   100% {
-    box-shadow: 0 0 0 7px oklch(82% 0.155 78 / 0);
+    box-shadow: 0 0 0 7px oklch(82% 0 0 / 0);
   }
 }
 
@@ -117,33 +117,47 @@
   position: relative;
   min-height: 100svh;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  justify-content: center;
   padding-top: 5.5rem;
   padding-bottom: var(--band-y);
   padding-inline: var(--gutter);
   overflow: hidden;
 }
 
-.beamfield {
+/* Ambient void glow under the constellation (replaces the BeamField canvas). */
+.hero::before {
+  content: "";
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
   z-index: 0;
-  /* fade the field at the bottom edge so copy below sits cleanly */
-  -webkit-mask-image: radial-gradient(
-    140% 100% at 70% 38%,
-    #000 45%,
-    transparent 100%
-  );
-  mask-image: radial-gradient(140% 100% at 70% 38%, #000 45%, transparent 100%);
+  pointer-events: none;
+  background:
+    radial-gradient(
+      54% 52% at 74% 40%,
+      oklch(64% 0 0 / 0.18),
+      transparent 70%
+    ),
+    radial-gradient(
+      40% 44% at 88% 70%,
+      oklch(67% 0 0 / 0.1),
+      transparent 70%
+    );
 }
 
-.hero-inner {
+.hero-grid {
   position: relative;
   z-index: 1;
   width: min(1180px, 100%);
   margin-inline: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+  align-items: center;
+  gap: clamp(2rem, 5vw, 4rem);
+}
+
+.hero-copy {
+  min-width: 0;
 }
 
 .hero-eyebrow {
@@ -157,7 +171,7 @@
   padding: 0.45rem 0.85rem 0.45rem 0.6rem;
   border: 1px solid var(--line-bright);
   border-radius: var(--r-pill);
-  background: oklch(17% 0.045 290 / 0.55);
+  background: oklch(17% 0 0 / 0.55);
   margin-bottom: 1.6rem;
 }
 
@@ -171,7 +185,7 @@
 }
 
 .hero .lede {
-  max-width: 54ch;
+  max-width: 50ch;
   color: var(--text-soft);
 }
 
@@ -183,17 +197,21 @@
 }
 
 .hero-proof {
+  position: relative;
+  z-index: 1;
+  width: min(1180px, 100%);
+  margin-inline: auto;
   display: flex;
   flex-wrap: wrap;
   gap: 1.6rem 2.4rem;
-  margin-top: 3rem;
+  margin-top: clamp(2.5rem, 5vw, 4rem);
   padding-top: 1.6rem;
   border-top: 1px solid var(--line);
-  max-width: 46rem;
 }
 
 .proof-item {
-  max-width: 16rem;
+  flex: 1 1 14rem;
+  max-width: 20rem;
 }
 .proof-item .proof-k {
   display: flex;
@@ -213,6 +231,393 @@
   color: var(--muted);
   line-height: 1.45;
 }
+
+/* ---------------- Constellation (hero visual) ---------------- */
+
+.constellation {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Fixed-aspect stage so the percentage node positions hold at every width. */
+.cn-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 0.9;
+  filter: drop-shadow(0 30px 70px oklch(64% 0 0 / 0.18));
+}
+
+/* Beam layer fills the stage; non-uniform stretch is fine — beams are decorative. */
+.cn-beams {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  overflow: visible;
+}
+.beam-rail {
+  fill: none;
+  stroke: var(--line-bright);
+  stroke-width: 1.1;
+  opacity: 0.4;
+  vector-effect: non-scaling-stroke;
+}
+.beam-flow {
+  fill: none;
+  stroke: url(#cn-beam);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-dasharray: 2.5 5;
+  vector-effect: non-scaling-stroke;
+  animation: beam-drift 2.6s linear infinite;
+  filter: drop-shadow(0 0 2px oklch(67% 0 0 / 0.5));
+}
+.beam-flow.is-static {
+  animation: none;
+  opacity: 0.85;
+}
+@keyframes beam-drift {
+  to {
+    stroke-dashoffset: -15;
+  }
+}
+.beam-packet {
+  fill: oklch(94% 0 0);
+  filter: drop-shadow(0 0 2.5px oklch(74% 0 0 / 0.95));
+}
+
+/* CENTER hub */
+.cn-hub {
+  position: absolute;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+}
+.cn-core {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(
+    circle at 38% 32%,
+    oklch(30% 0 0 / 0.95),
+    oklch(15% 0 0 / 0.95)
+  );
+  border: 1px solid var(--line-bright);
+  box-shadow:
+    0 0 0 1px oklch(64% 0 0 / 0.25),
+    0 0 38px oklch(67% 0 0 / 0.45),
+    inset 0 0 18px oklch(64% 0 0 / 0.35);
+}
+.cn-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 1px solid oklch(64% 0 0 / 0.5);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+}
+.cn-ring.r2 {
+  border-color: oklch(67% 0 0 / 0.5);
+}
+.cn-ping {
+  animation: cn-ping 3.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes cn-ping {
+  0% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.7);
+  }
+}
+
+/* Shared node positioning — each card is centered on its anchor point. */
+.cn-node {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  width: max-content;
+}
+.cn-float {
+  animation: cn-float 7s ease-in-out infinite;
+}
+@keyframes cn-float {
+  0%,
+  100% {
+    transform: translate(-50%, -50%);
+  }
+  50% {
+    transform: translate(-50%, calc(-50% - 7px));
+  }
+}
+
+/* Dark violet glass agent / channel cards (matches the .post material). */
+.cn-card,
+.cn-channel {
+  display: grid;
+  gap: 0.32rem;
+  width: 12.5rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: linear-gradient(
+    oklch(22% 0 0 / 0.82),
+    oklch(16% 0 0 / 0.82)
+  );
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 22px 44px -28px oklch(8% 0 0 / 0.9),
+    inset 0 1px 0 oklch(100% 0 0 / 0.04);
+}
+.cn-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.cn-card-head .robot {
+  flex: none;
+  filter: drop-shadow(0 0 7px currentColor);
+}
+.cn-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.cn-line {
+  font-size: 0.85rem;
+  color: var(--text-soft);
+  line-height: 1.35;
+}
+.cn-mention {
+  color: var(--beam-1-bright);
+  font-weight: 600;
+}
+.cn-sub {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+/* amber status pill — color is never alone; the word + check carry the meaning */
+.cn-status {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--carrier);
+  padding: 0.18rem 0.5rem;
+  border-radius: var(--r-pill);
+  border: 1px solid oklch(70% 0 0 / 0.55);
+  background: oklch(70% 0 0 / 0.1);
+}
+.cn-status svg {
+  flex: none;
+}
+
+/* Channel card specifics */
+.cn-hash {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1rem;
+  color: var(--beam-2-bright);
+}
+.cn-stack {
+  display: inline-flex;
+  margin-top: 0.1rem;
+}
+.cn-stack-ava {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.6rem;
+  color: oklch(15% 0 0);
+  border: 2px solid var(--void);
+  margin-left: -7px;
+}
+.cn-stack-ava:first-child {
+  margin-left: 0;
+}
+.cn-plus {
+  background: var(--field);
+  color: var(--text-soft);
+  border-color: var(--void);
+  box-shadow: inset 0 0 0 1px var(--line-bright);
+}
+
+/* Human nodes: avatar + handle row, then a chat bubble */
+.cn-human {
+  display: grid;
+  gap: 0.45rem;
+  width: max-content;
+  max-width: 12rem;
+  justify-items: start;
+}
+.cn-human.right {
+  justify-items: end;
+  text-align: right;
+}
+.cn-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.cn-ava {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.82rem;
+  color: oklch(16% 0 0);
+  flex: none;
+  box-shadow: 0 0 0 1px oklch(100% 0 0 / 0.12);
+}
+.grad-j {
+  background: linear-gradient(135deg, oklch(72% 0 0), oklch(74% 0 0));
+}
+.grad-m {
+  background: linear-gradient(135deg, oklch(74% 0 0), oklch(82% 0 0));
+}
+.grad-a {
+  background: linear-gradient(135deg, oklch(80% 0 0), oklch(72% 0 0));
+}
+.cn-handle {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.cn-bubble {
+  position: relative;
+  font-size: 0.84rem;
+  color: var(--text);
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line-bright);
+  border-radius: 12px;
+  background: linear-gradient(
+    oklch(24% 0 0 / 0.82),
+    oklch(18% 0 0 / 0.82)
+  );
+  backdrop-filter: blur(10px);
+  box-shadow: 0 16px 34px -26px oklch(8% 0 0 / 0.9);
+}
+/* bubble tail points up toward the avatar above it */
+.cn-bubble::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
+  background: oklch(23% 0 0 / 0.82);
+  border-left: 1px solid var(--line-bright);
+  border-top: 1px solid var(--line-bright);
+  transform: rotate(45deg);
+}
+.cn-human.right .cn-bubble::after {
+  left: auto;
+  right: 18px;
+}
+
+/* Keep the playful emoji in the chat copy, but render it monochrome so the
+   scene stays strictly black & white. */
+.cn-bubble,
+.cn-channel .cn-line {
+  filter: grayscale(1);
+}
+
+/* Reduced motion backstop. Primary gate is the JS hook (it omits the float/ping
+   classes and the moving packet); this nets anything the hook might miss. */
+@media (prefers-reduced-motion: reduce) {
+  .cn-float,
+  .cn-ping,
+  .beam-flow,
+  .scroll-hint .bar {
+    animation: none !important;
+  }
+}
+
+/* ---------------- Hero responsive ---------------- */
+
+@media (max-width: 1023px) {
+  .hero {
+    min-height: auto;
+    justify-content: flex-start;
+  }
+  .hero-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.75rem;
+  }
+  .hero h1 {
+    max-width: 18ch;
+  }
+  .cn-stage {
+    max-width: 34rem;
+    margin-inline: auto;
+    aspect-ratio: 1 / 0.92;
+  }
+}
+
+@media (max-width: 620px) {
+  /* Drop the crowded chat bubbles and the far-right human (card + its beam). */
+  .cn-bubble {
+    display: none;
+  }
+  .constellation [data-key="mike"] {
+    display: none;
+  }
+  .cn-stage {
+    aspect-ratio: 1 / 1.04;
+  }
+  .cn-card,
+  .cn-channel {
+    width: 9rem;
+    padding: 0.55rem 0.65rem;
+  }
+  .cn-title {
+    font-size: 0.82rem;
+  }
+  .cn-line,
+  .cn-sub {
+    font-size: 0.76rem;
+  }
+  /* Pull the bottom corner cards inward so they don't clip on a narrow stage.
+     Positions are JS-driven inline (single source for the beams), so the
+     responsive nudge needs !important to win over the inline value. */
+  .constellation [data-key="test"] {
+    left: 17% !important;
+  }
+  .constellation [data-key="docs"] {
+    left: 75% !important;
+  }
+}
+
+/* ---------------- Scroll hint ---------------- */
 
 .scroll-hint {
   position: absolute;
@@ -246,6 +651,11 @@
   50% {
     transform: scaleY(1);
     opacity: 1;
+  }
+}
+@media (max-width: 1023px) {
+  .scroll-hint {
+    display: none;
   }
 }
 
@@ -339,8 +749,8 @@
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background:
-    linear-gradient(oklch(19% 0.04 290 / 0.6), oklch(15% 0.035 292 / 0.6));
-  box-shadow: 0 40px 80px -50px oklch(64% 0.2 292 / 0.5);
+    linear-gradient(oklch(19% 0 0 / 0.6), oklch(15% 0 0 / 0.6));
+  box-shadow: 0 40px 80px -50px oklch(64% 0 0 / 0.5);
 }
 .floor-stage::before {
   content: "the floor";
@@ -364,12 +774,12 @@
   padding: 0.95rem 1.05rem;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: oklch(20% 0.045 289 / 0.7);
+  background: oklch(20% 0 0 / 0.7);
 }
 .post.is-agent {
   margin-left: 1.6rem;
-  background: oklch(22% 0.05 320 / 0.55);
-  border-color: oklch(40% 0.08 330 / 0.6);
+  background: oklch(22% 0 0 / 0.55);
+  border-color: oklch(40% 0 0 / 0.6);
 }
 .avatar {
   width: 34px;
@@ -387,7 +797,7 @@
 }
 .avatar.agent {
   background: var(--beam-grad-soft);
-  border-color: oklch(60% 0.12 330 / 0.7);
+  border-color: oklch(60% 0 0 / 0.7);
 }
 .post-meta {
   display: flex;
@@ -413,11 +823,11 @@
 }
 .post-meta .tag.agent {
   color: var(--beam-2-bright);
-  border-color: oklch(60% 0.16 340 / 0.6);
+  border-color: oklch(60% 0 0 / 0.6);
 }
 .post-meta .tag.live {
   color: var(--carrier);
-  border-color: oklch(70% 0.14 70 / 0.6);
+  border-color: oklch(70% 0 0 / 0.6);
 }
 .post-body {
   font-size: 0.94rem;
@@ -488,8 +898,8 @@
   border-radius: var(--r-lg);
   padding: 1.5rem;
   background: linear-gradient(
-    oklch(18% 0.04 290 / 0.7),
-    oklch(13% 0.03 292 / 0.7)
+    oklch(18% 0 0 / 0.7),
+    oklch(13% 0 0 / 0.7)
   );
   overflow: hidden;
 }
@@ -517,7 +927,7 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  background: oklch(20% 0.045 290 / 0.5);
+  background: oklch(20% 0 0 / 0.5);
 }
 .iso-cell .cell-label {
   font-family: var(--font-mono);
@@ -552,7 +962,7 @@
   background: linear-gradient(
     90deg,
     transparent,
-    oklch(96% 0.05 300 / 0.7),
+    oklch(96% 0 0 / 0.7),
     transparent
   );
   transform: translateX(-100%);
@@ -597,8 +1007,8 @@
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: linear-gradient(
-    oklch(18% 0.04 290 / 0.7),
-    oklch(13% 0.03 292 / 0.7)
+    oklch(18% 0 0 / 0.7),
+    oklch(13% 0 0 / 0.7)
   );
   overflow: hidden;
 }
@@ -658,8 +1068,8 @@
 }
 .chip.scheduled {
   color: var(--carrier);
-  border: 1px solid oklch(70% 0.14 70 / 0.55);
-  background: oklch(70% 0.14 70 / 0.1);
+  border: 1px solid oklch(70% 0 0 / 0.55);
+  background: oklch(70% 0 0 / 0.1);
 }
 .chip.done {
   color: var(--muted);
@@ -746,8 +1156,8 @@
   border-radius: var(--r-lg);
   padding: 1.2rem;
   background: linear-gradient(
-    oklch(19% 0.04 290 / 0.7),
-    oklch(14% 0.03 292 / 0.7)
+    oklch(19% 0 0 / 0.7),
+    oklch(14% 0 0 / 0.7)
   );
   display: flex;
   flex-direction: column;
@@ -780,12 +1190,12 @@
 
 /* source dims as work leaves; target brightens as it lands */
 .cockpit-panel.source {
-  border-color: oklch(40% 0.07 292 / calc(0.9 - var(--p) * 0.5));
-  box-shadow: 0 0 40px -20px oklch(64% 0.2 292 / calc(0.8 - var(--p) * 0.7));
+  border-color: oklch(40% 0 0 / calc(0.9 - var(--p) * 0.5));
+  box-shadow: 0 0 40px -20px oklch(64% 0 0 / calc(0.8 - var(--p) * 0.7));
 }
 .cockpit-panel.target {
-  border-color: oklch(45% 0.1 70 / calc(0.3 + var(--p) * 0.6));
-  box-shadow: 0 0 50px -18px oklch(80% 0.15 75 / calc(var(--p) * 0.8));
+  border-color: oklch(45% 0 0 / calc(0.3 + var(--p) * 0.6));
+  box-shadow: 0 0 50px -18px oklch(80% 0 0 / calc(var(--p) * 0.8));
 }
 
 /* live prototype artifact */
@@ -793,7 +1203,7 @@
   border: 1px solid var(--line-bright);
   border-radius: var(--r-md);
   padding: 0.75rem 0.85rem;
-  background: oklch(22% 0.05 290 / 0.85);
+  background: oklch(22% 0 0 / 0.85);
   display: grid;
   gap: 0.55rem;
 }
@@ -820,8 +1230,8 @@
   border-radius: 6px;
   background: linear-gradient(
     120deg,
-    oklch(30% 0.08 292 / 0.6),
-    oklch(28% 0.1 330 / 0.5)
+    oklch(30% 0 0 / 0.6),
+    oklch(28% 0 0 / 0.5)
   );
   overflow: hidden;
 }
@@ -834,7 +1244,7 @@
   background: linear-gradient(
     90deg,
     transparent,
-    oklch(92% 0.06 300 / 0.45),
+    oklch(92% 0 0 / 0.45),
     transparent
   );
   transform: translateX(-120%);
@@ -843,7 +1253,7 @@
 .proto .bar {
   height: 5px;
   border-radius: 3px;
-  background: oklch(30% 0.04 290);
+  background: oklch(30% 0 0);
   overflow: hidden;
 }
 .proto .bar > i {
@@ -882,7 +1292,7 @@
   width: calc(var(--p) * 100%);
   background: var(--beam-grad);
   border-radius: 2px;
-  box-shadow: 0 0 12px oklch(67% 0.27 350 / 0.6);
+  box-shadow: 0 0 12px oklch(67% 0 0 / 0.6);
 }
 /* the packet riding the beam = the live prototype in transit */
 .corridor .packet {
@@ -896,8 +1306,8 @@
   display: grid;
   place-items: center;
   background: var(--beam-grad);
-  box-shadow: 0 0 24px oklch(67% 0.27 350 / 0.7);
-  color: oklch(14% 0.04 300);
+  box-shadow: 0 0 24px oklch(67% 0 0 / 0.7);
+  color: oklch(14% 0 0);
 }
 .corridor .packet svg {
   width: 18px;
@@ -977,7 +1387,7 @@
   color: var(--muted);
   font-size: clamp(1.1rem, 1rem + 0.6vw, 1.45rem);
   text-decoration: line-through;
-  text-decoration-color: oklch(67% 0.27 350 / 0.7);
+  text-decoration-color: oklch(67% 0 0 / 0.7);
   text-decoration-thickness: 2px;
   margin-bottom: 0.8rem;
 }
@@ -1006,7 +1416,7 @@
   padding: 0.5rem 0.9rem;
   border: 1px solid var(--line-bright);
   border-radius: var(--r-pill);
-  background: oklch(18% 0.04 290 / 0.6);
+  background: oklch(18% 0 0 / 0.6);
 }
 .mem-chip b {
   color: var(--beam-1-bright);
@@ -1026,7 +1436,7 @@
   inset: 0;
   background: radial-gradient(
     80% 60% at 50% 40%,
-    oklch(64% 0.215 292 / 0.18),
+    oklch(64% 0 0 / 0.18),
     transparent 70%
   );
   z-index: 0;
@@ -1056,7 +1466,7 @@
   padding: 0.6rem 1.1rem;
   border: 1px solid var(--line-bright);
   border-radius: var(--r-pill);
-  background: oklch(17% 0.04 290 / 0.5);
+  background: oklch(17% 0 0 / 0.5);
 }
 .final .horizon .hdot {
   width: 7px;
