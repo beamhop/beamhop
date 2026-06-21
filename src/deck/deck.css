@@ -96,8 +96,11 @@
 .slide {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
+  /* flex (not grid place-items) so the centered wrap can't be stretched to a
+     wide visual's max-content and push the whole slide past the viewport */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: clamp(1rem, 3vh, 2rem) var(--gutter);
   opacity: 0;
   visibility: hidden;
@@ -122,6 +125,7 @@
 
 .s-wrap {
   width: min(1180px, 100%);
+  min-width: 0;
   margin-inline: auto;
 }
 .s-wrap.wide {
@@ -311,6 +315,18 @@
   line-height: 1.03;
 }
 
+/* the closing slide carries a lot — cap the title + horizon so the unicorn
+   mantra and the single P2P line never fall below the fold */
+.s-vision .s-title {
+  font-size: clamp(2.1rem, 1.3rem + 3.4vw, 4.1rem);
+}
+.s-vision .s-band {
+  margin-top: clamp(1rem, 2.2vh, 1.6rem);
+}
+.s-vision .dv-horizon svg {
+  max-height: 25vh;
+}
+
 /* the closing mantra + the single P2P horizon line */
 .s-mantra {
   margin-top: clamp(1.4rem, 3vh, 2rem);
@@ -347,6 +363,44 @@
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--faint);
+}
+
+/* founder credibility strip (the team beat for the VC judges) */
+.s-team {
+  margin-top: clamp(1.3rem, 3vh, 2rem);
+  padding-top: clamp(1rem, 2.2vh, 1.4rem);
+  border-top: 1px solid var(--line);
+}
+.s-team-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.s-team-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.2rem 1.8rem;
+  margin-top: 0.85rem;
+}
+.s-team-one b {
+  display: block;
+  font-weight: 600;
+  font-size: 0.98rem;
+  color: var(--text);
+  margin-bottom: 0.2rem;
+}
+.s-team-one span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.42;
+}
+@media (max-width: 560px) {
+  .s-team-grid {
+    grid-template-columns: 1fr;
+    gap: 0.9rem;
+  }
 }
 
 /* ---------- bottom controls ---------- */
@@ -442,9 +496,30 @@
   }
 }
 
+@media (max-width: 720px) {
+  .s-title,
+  .s-vision .s-title {
+    font-size: clamp(1.95rem, 1.3rem + 3.6vw, 3rem);
+  }
+  /* dense slides exceed a phone's height once stacked — let the active slide
+     scroll vertically (top-aligned) rather than clip the headline or bullets */
+  .slide {
+    align-items: flex-start;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
 @media (max-width: 560px) {
   .deck-context {
     display: none;
+  }
+  .s-eyebrow {
+    font-size: 0.72rem;
+    text-align: left;
+  }
+  .s-proofrow {
+    gap: 1rem 1.6rem;
   }
 }
 
@@ -1088,6 +1163,38 @@
   }
   .dv-pipe {
     height: 44px;
+  }
+}
+
+/* Mobile visual overrides live AFTER the .dv-* base rules so they win on equal
+   specificity (the beam corridor must stack instead of staying 3-up). */
+@media (max-width: 720px) {
+  .dv-corridor,
+  .dv-corridor.is-static {
+    grid-template-columns: 1fr;
+    gap: 0.9rem;
+  }
+  .dv-track {
+    height: 50px;
+  }
+  .dv-track-line {
+    left: 22%;
+    right: 22%;
+  }
+  .dv-track-label {
+    top: calc(50% + 19px);
+  }
+  .dv-constellation {
+    aspect-ratio: 1 / 1;
+  }
+  .dv-chip {
+    padding: 0.42rem 0.55rem;
+  }
+  .dv-chip b {
+    font-size: 0.78rem;
+  }
+  .dv-chip i {
+    font-size: 0.66rem;
   }
 }
 

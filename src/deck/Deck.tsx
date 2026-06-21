@@ -104,8 +104,7 @@ export default function Deck() {
               key={i}
               className="slide"
               data-state={state}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              {...({ inert: state === "active" ? undefined : "" } as any)}
+              inert={state !== "active"}
               aria-hidden={state !== "active"}
             >
               <Slide active={state === "active"} reduced={reduced} />
