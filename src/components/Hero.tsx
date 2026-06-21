@@ -19,11 +19,11 @@ export default function Hero() {
           </p>
 
           <div className="hero-cta">
-            <a className="btn btn-primary" href="#start">
-              Spin up an agent
+            <a className="btn btn-primary" href="https://app.beamhop.com">
+              Join the network
               <ArrowIcon aria-hidden="true" />
             </a>
-            <a className="btn" href="#connected">
+            <a className="btn" href="/deck">
               See it beam
               <BeamIcon width={18} height={18} aria-hidden="true" />
             </a>
