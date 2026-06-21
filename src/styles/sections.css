@@ -1423,6 +1423,221 @@
   font-weight: 600;
 }
 
+/* ---------------- The team ---------------- */
+
+.team {
+  position: relative;
+}
+
+/* member · bridge · member — the two founders as two nodes on a beam */
+.team-grid {
+  margin-top: clamp(2.5rem, 5vw, 4rem);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: clamp(0.5rem, 2vw, 1.4rem);
+}
+
+.member {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: linear-gradient(oklch(19% 0 0 / 0.7), oklch(14% 0 0 / 0.7));
+  box-shadow:
+    0 22px 44px -28px oklch(8% 0 0 / 0.9),
+    inset 0 1px 0 oklch(100% 0 0 / 0.04);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.member:hover {
+  border-color: var(--line-bright);
+  box-shadow: 0 0 50px -22px oklch(80% 0 0 / 0.6);
+}
+
+.member-top {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+.member-ava {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1rem;
+  color: oklch(15% 0 0);
+  flex: none;
+  box-shadow: 0 0 0 1px oklch(100% 0 0 / 0.12);
+}
+.member-id {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.member-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.12rem;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.member-handle {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.member-role {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+.member-bio {
+  color: var(--muted);
+  font-size: 0.96rem;
+  line-height: 1.5;
+}
+.member-link {
+  margin-top: auto;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--line-bright);
+  border-radius: var(--r-pill);
+  background: oklch(17% 0 0 / 0.6);
+  transition:
+    transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.25s ease,
+    color 0.25s ease;
+}
+.member-link:hover {
+  transform: translateY(-2px);
+  border-color: var(--beam-1-bright);
+  color: var(--text);
+}
+
+/* center bridge: a live beam with the brand node riding it */
+.team-bridge {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 92px;
+}
+.team-beam {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  background: var(--line-bright);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.team-beam::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    oklch(96% 0 0 / 0.7),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: scan 3.2s ease-in-out infinite;
+}
+.team-node {
+  position: relative;
+  z-index: 1;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(
+    circle at 38% 32%,
+    oklch(30% 0 0 / 0.95),
+    oklch(13% 0 0 / 0.95)
+  );
+  border: 1px solid var(--line-bright);
+  box-shadow:
+    0 0 0 1px oklch(64% 0 0 / 0.2),
+    0 0 28px oklch(67% 0 0 / 0.35);
+}
+.team-node .brand-mark {
+  width: 24px;
+  height: 24px;
+}
+
+.team-proof {
+  margin: clamp(2rem, 4vw, 2.8rem) auto 0;
+  width: max-content;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+  padding: 0.6rem 1.1rem;
+  border: 1px solid var(--line-bright);
+  border-radius: var(--r-pill);
+  background: oklch(17% 0 0 / 0.5);
+}
+.team-proof .hdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--beam-grad);
+  flex: none;
+}
+
+@media (max-width: 760px) {
+  .team-grid {
+    grid-template-columns: 1fr;
+    gap: 1.4rem;
+    justify-items: center;
+  }
+  .member {
+    width: 100%;
+    max-width: 30rem;
+  }
+  /* bridge becomes a short vertical beam between the stacked founders */
+  .team-bridge {
+    min-width: 0;
+    height: 54px;
+  }
+  .team-beam {
+    left: 50%;
+    right: auto;
+    top: 6%;
+    bottom: 6%;
+    height: auto;
+    width: 2px;
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .team-beam::after {
+    animation: none;
+  }
+}
+
 /* ---------------- Final claim ---------------- */
 
 .final {

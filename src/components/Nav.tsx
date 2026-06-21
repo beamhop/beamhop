@@ -24,6 +24,7 @@ export default function Nav() {
         <a href="#automation">Automation</a>
         <a href="#connected">Connected work</a>
         <a href="#memory">Memory</a>
+        <a href="#team">Team</a>
         <a href="/protocols">Protocols</a>
       </nav>
 

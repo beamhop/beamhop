@@ -6,6 +6,7 @@ import Security from "./components/Security";
 import Automation from "./components/Automation";
 import Connected from "./components/Connected";
 import Memory from "./components/Memory";
+import Team from "./components/Team";
 import Final from "./components/Final";
 import Footer from "./components/Footer";
 import { useReducedMotion, useScrollReveal } from "./lib/motion";
@@ -29,6 +30,8 @@ export default function App() {
         <Connected />
         <hr className="divider" />
         <Memory />
+        <hr className="divider" />
+        <Team />
         <Final />
       </main>
       <Footer />
