@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Reveal } from "./Reveal";
 import { LinkedInIcon, Logo } from "./icons";
 
@@ -9,6 +10,7 @@ type Member = {
   role: string;
   bio: string;
   href: string;
+  image?: string;
 };
 
 /**
@@ -26,6 +28,7 @@ const TEAM: Member[] = [
     role: "Co-founder · lead · ex-air-force pilot",
     bio: "Former air-force pilot, calm under load. As a hands-on engineering manager at the world's largest logistics operation, he built and led the project that saved ~£10M a year. Now an engineer at IKEA. He carries the thesis and the design partners.",
     href: "https://www.linkedin.com/in/htx/",
+    image: "/team/ht.png",
   },
   {
     initials: "AU",
@@ -35,16 +38,39 @@ const TEAM: Member[] = [
     role: "Co-founder · engineering · $1B+ exit",
     bio: "Builder who was inside a previous company through its $1B+ exit, and has shipped inside some of the world's largest enterprises. He owns the sovereign substrate and the real isolation underneath — the reason a live agent beams between machines with no blast radius.",
     href: "https://www.linkedin.com/in/ahmet-yasin-uslu/",
+    image: "/team/yasin.jpeg",
   },
 ];
+
+/** Photo when available; falls back to the initials medallion if it fails. */
+function Avatar({ m }: { m: Member }) {
+  const [broken, setBroken] = useState(false);
+  if (m.image && !broken) {
+    return (
+      <img
+        className="member-photo"
+        src={m.image}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        width={52}
+        height={52}
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+  return (
+    <span className={"member-ava " + m.grad} aria-hidden="true">
+      {m.initials}
+    </span>
+  );
+}
 
 function MemberCard({ m }: { m: Member }) {
   return (
     <article className="member">
       <div className="member-top">
-        <span className={"member-ava " + m.grad} aria-hidden="true">
-          {m.initials}
-        </span>
+        <Avatar m={m} />
         <span className="member-id">
           <span className="member-name">{m.name}</span>
           <span className="member-handle">{m.handle}</span>

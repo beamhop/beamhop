@@ -1462,17 +1462,34 @@
   gap: 0.8rem;
 }
 .member-ava {
-  width: 46px;
-  height: 46px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 1rem;
+  font-size: 1.05rem;
   color: oklch(15% 0 0);
   flex: none;
   box-shadow: 0 0 0 1px oklch(100% 0 0 / 0.12);
+}
+
+/* Real headshots, rendered monochrome so they sit in the ground-station scene. */
+.member-photo {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  flex: none;
+  background: var(--field);
+  filter: grayscale(1) contrast(1.03);
+  box-shadow: 0 0 0 1px oklch(100% 0 0 / 0.14);
+  transition: filter 0.3s ease;
+}
+.member:hover .member-photo {
+  filter: grayscale(1) contrast(1.05) brightness(1.06);
 }
 .member-id {
   display: grid;
