@@ -30,12 +30,12 @@ function Hook({ reduced }: SlideProps) {
     <div className="s-wrap wide s-center">
       <span className="s-eyebrow">
         <span className="status-dot" aria-hidden="true" />
-        Your company&rsquo;s sovereign agent network
+        beamhop &middot; one live workspace for people and agents
       </span>
-      <h2 className="s-title">Watch this still run.</h2>
+      <h2 className="s-title">Watch this work change hands.</h2>
       <p className="s-sub" style={{ marginInline: "auto" }}>
-        A live, running agent &mdash; mid-task. We beam it onto a second machine,
-        in this room, right now.
+        A real task, caught mid-flight. We beam it from a person to an agent &mdash;
+        then on to the next pair of hands &mdash; live, in this room. It never restarts.
       </p>
 
       <div className="s-band">
@@ -48,21 +48,21 @@ function Hook({ reduced }: SlideProps) {
             <BoxIcon width={16} height={16} aria-hidden="true" />
             Lands intact
           </div>
-          <p>It keeps going &mdash; no restart, no rebuild, no copy-paste of state.</p>
+          <p>The whole live state moves &mdash; no restart, no rebuild, no copy-paste, no lossy handoff.</p>
         </div>
         <div className="s-proof">
           <div className="k">
             <BeamIcon width={16} height={16} aria-hidden="true" />
-            That verb is the company
+            Beams any direction
           </div>
-          <p>Beam: hand a live piece of work to a person or a machine you control, instantly and intact.</p>
+          <p>Person to agent, agent to person, person to person &mdash; one identical motion, every time.</p>
         </div>
         <div className="s-proof">
           <div className="k">
             <PulseIcon width={16} height={16} aria-hidden="true" />
             Resumes, not restarts
           </div>
-          <p>The bar picks up from exactly where it was &mdash; not from zero.</p>
+          <p>Whoever catches it continues from the exact moment it left &mdash; never from zero.</p>
         </div>
       </div>
     </div>
@@ -81,9 +81,9 @@ function Villain({ reduced }: SlideProps) {
           <p className="s-sub">The lock-in isn&rsquo;t your data. It&rsquo;s your agents&rsquo; memory.</p>
           <Bullets
             items={[
-              "Every decision, recovery, and shortcut your agents learn lives in a US vendor's cloud — their format, their terms.",
+              "Every decision, recovery, and shortcut your agents learn lives in a US vendor's cloud. Their format, their terms.",
               "GDPR was about your customers' data. This is about your company's mind.",
-              "Stuck today? The best you can do is throw work over a wall — a file, an export, dead state.",
+              "Stuck today? The best you can do is throw work over a wall; a file, an export, dead state.",
               "When the contract ends, the brain doesn't come home.",
             ]}
           />
@@ -108,7 +108,7 @@ function Product({ reduced }: SlideProps) {
           <p className="s-sub">Beam live work between them, on a network your company owns.</p>
           <Bullets
             items={[
-              "Beam a running agent, a working environment, or a live prototype to the next node — a teammate, an agent, or a machine you control. It lands running.",
+              "Beam a running agent, a working environment, or a live prototype to the next node, a teammate, an agent, or a machine you control. It lands running.",
               "Beam without the blast radius: every run sits in a real, sealed cell. The work moves; the danger never does.",
               "Every agent is a living extension of one person's reach — it amplifies your team, never replaces it, never out of the loop.",
             ]}
@@ -138,7 +138,7 @@ function Momentum({ reduced }: SlideProps) {
           <Bullets
             items={[
               "72 hours: a live agent network, a real sealed run you can probe, work beaming between humans and agents on infra we control.",
-              "First sovereign-infra design partner secured this weekend — a company that owns its network instead of renting its brain.",
+              "First sovereign-infra design partner secured this weekend, a company that owns its network instead of renting its brain.",
             ]}
           />
 
@@ -149,7 +149,7 @@ function Momentum({ reduced }: SlideProps) {
                 <b>HT Sahin</b>
                 <span>
                   Air-force pilot. Built the ~&pound;10M/yr project at the
-                  world&rsquo;s largest logistics operation. Now engineering at IKEA.
+                  world&rsquo;s most iconic fashion brands. Now at the largest logistics operation of the planet, IKEA.
                 </span>
               </div>
               <div className="s-team-one">
@@ -187,7 +187,7 @@ function Vision({ reduced }: SlideProps) {
       </div>
 
       <p className="s-mantra">
-        Priced per company. Stickier with every memory it keeps.
+        Priced per seat. Stickier with every memory it keeps.
       </p>
       <p className="s-p2p">
         <span className="hdot" aria-hidden="true" />

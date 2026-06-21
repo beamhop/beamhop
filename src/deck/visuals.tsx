@@ -144,14 +144,14 @@ export function CorridorViz({ reduced }: VizProps) {
           <span className="dv-ava">J</span>
           <span>
             <b>Joan</b>
-            <i>cockpit</i>
+            <i>analyst</i>
           </span>
         </div>
         <div className="dv-proto">
           <div className="dv-proto-top">
-            agent · atlas
+            task · pricing-v3
             <span className="dv-live">
-              <span className="dv-live-dot" /> running
+              <span className="dv-live-dot" /> live
             </span>
           </div>
           <div className="dv-proto-screen" />
@@ -159,7 +159,7 @@ export function CorridorViz({ reduced }: VizProps) {
             <i />
           </div>
         </div>
-        <span className="dv-cap">&ldquo;I&rsquo;m stuck — take it live.&rdquo;</span>
+        <span className="dv-cap">&ldquo;Got it this far — beam it on.&rdquo;</span>
       </div>
 
       <div className="dv-track">
@@ -175,17 +175,17 @@ export function CorridorViz({ reduced }: VizProps) {
 
       <div className="dv-cockpit target">
         <div className="dv-who">
-          <span className="dv-ava">M</span>
+          <RobotAvatar id="corridor-atlas" size={26} />
           <span>
-            <b>Mike</b>
-            <i>picks it up</i>
+            <b>Atlas</b>
+            <i>agent · picks it up</i>
           </span>
         </div>
         <div className="dv-proto">
           <div className="dv-proto-top">
-            agent · atlas
+            task · pricing-v3
             <span className="dv-live">
-              <span className="dv-live-dot" /> running
+              <span className="dv-live-dot" /> live
             </span>
           </div>
           <div className="dv-proto-screen alt" />
@@ -193,7 +193,7 @@ export function CorridorViz({ reduced }: VizProps) {
             <i className="full" />
           </div>
         </div>
-        <span className="dv-cap on">landed intact &middot; still running</span>
+        <span className="dv-cap on">landed intact &middot; still live</span>
       </div>
     </div>
   );

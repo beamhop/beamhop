@@ -6,7 +6,22 @@ export default defineConfig({
   // Served at the root of the custom domain https://beamhop.com (see public/CNAME),
   // so built asset URLs live at the site root rather than a repo subpath.
   base: "/",
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: "spa-fallback",
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (req.url === "/deck" || req.url === "/deck/") {
+            req.url = "/deck/index.html";
+          } else if (req.url === "/protocols" || req.url === "/protocols/") {
+            req.url = "/protocols/index.html";
+          }
+          next();
+        });
+      },
+    },
+  ],
   build: {
     rollupOptions: {
       // Multi-page: the marketing site at "/", the pitch deck at "/deck", and
