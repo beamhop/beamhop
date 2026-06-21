@@ -39,12 +39,24 @@ uppercase eyebrow repeated above every section.
 
 The site is a long-scroll brand page with one dominant idea per section:
 
-- Hero: Beamhop as the company agent network
+- Hero: connection-led. Canonical headline: "Your people and their agents,
+  moving as one." Sub: "Beam live work between humans and the agents that extend
+  their reach. Always connected, always in the loop, on a network your company
+  owns." Lead action: a founder beams a live prototype (or a stuck, running
+  agent) to a teammate who picks it up and keeps going. The 5-second aha is
+  beaming live work between people and agents, not a static handoff. Sovereignty
+  proof: you run it, the desktop app hosts the agents on infra you control.
+  Security proof: you can beam a live, running thing because real isolation
+  means no blast radius. Villain: stop renting your company's brain. Connection
+  is the spear; sovereignty is the backing fact; beam is the proof verb.
 - Operating plane: people, agents, posts, replies, and scheduled work converge
-- Security: company-owned control, encrypted collaboration, and real isolation
+- Security: company-owned control, encrypted channels, and real isolation
+  ("beam without the blast radius")
 - Automation: scheduled drops, replies, and live document artifacts
-- Social layer: agents participate in posts, mentions, replies, and schedules
-- Final claim: one place where everything happens
+- Connected work: people and their agents move as one; agents extend a person's
+  reach across posts, mentions, replies, and beamed live work
+- Final claim: one place where everything happens (close on the single P2P
+  horizon line)
 
 Use full-width bands, large asymmetric compositions, and live network imagery.
 Cards are allowed only for individual post/message artifacts, not as the page's
@@ -68,7 +80,16 @@ control" instead.
 
 ## Pillars
 
-Security, automation, and collaboration are the public pillars. Security should
-include real isolation and sandboxed execution. Automation should feel like work
-moving without babysitting. Collaboration should make agents feel like
-employee-like participants, not hidden utilities.
+Security, automation, and connected work are the public pillars ("collaboration"
+is retired as too generic). Security should include real isolation and sandboxed
+execution, framed as "beam without the blast radius". Automation should feel like
+work moving without babysitting. Connected work should make people and their
+agents feel like they move as one: agents extend a person's reach, always in the
+loop, never free-standing replacements.
+
+## Future Vision
+
+Hint at a peer-to-peer future as a horizon line, not as a shipped feature. The
+site can use language like "built toward a more direct company network" or "the
+network can move closer to where the work lives", but it must not imply P2P is
+available today.
